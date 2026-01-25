@@ -2,9 +2,8 @@
 API schemas and validation models
 Centralized location for all Pydantic models
 """
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 from typing import List, Optional, Dict, Any
-from datetime import datetime
 from enum import Enum
 
 class RiskLevel(str, Enum):
@@ -13,53 +12,44 @@ class RiskLevel(str, Enum):
     MEDIUM = "Medium"
     HIGH = "High"
 
-class Sex(int, Enum):
-    """Sex enumeration"""
-    FEMALE = 0
-    MALE = 1
-
-class ChestPainType(int, Enum):
-    """Chest pain type enumeration"""
-    TYPICAL_ANGINA = 0
-    ATYPICAL_ANGINA = 1
-    NON_ANGINAL_PAIN = 2
-    ASYMPTOMATIC = 3
-
 class PredictionRequest(BaseModel):
-    """Request model for heart disease prediction with comprehensive validation"""
-    age: float = Field(..., ge=0, le=120, description="Age in years")
+    """
+    Request model for heart disease prediction with medical reality checks.
+    Ranges are widened to accept medically possible extreme values while rejecting physical impossibilities.
+    """
+    age: float = Field(..., ge=1, le=120, description="Age in years (1-120)")
     sex: int = Field(..., ge=0, le=1, description="Sex (0: female, 1: male)")
     cp: float = Field(..., ge=0, le=3, description="Chest pain type (0-3)")
-    trestbps: float = Field(..., ge=80, le=200, description="Resting blood pressure (mm Hg)")
-    chol: float = Field(..., ge=100, le=600, description="Serum cholesterol (mg/dl)")
-    fbs: int = Field(..., ge=0, le=1, description="Fasting blood sugar > 120 mg/dl")
+    trestbps: float = Field(..., ge=50, le=300, description="Resting blood pressure (50-300 mm Hg)")
+    chol: float = Field(..., ge=50, le=800, description="Serum cholesterol (50-800 mg/dl)")
+    fbs: int = Field(..., ge=0, le=1, description="Fasting blood sugar > 120 mg/dl (0: false, 1: true)")
     restecg: float = Field(..., ge=0, le=2, description="Resting ECG results (0-2)")
-    thalach: float = Field(..., ge=60, le=220, description="Maximum heart rate achieved")
-    exang: int = Field(..., ge=0, le=1, description="Exercise induced angina")
-    oldpeak: float = Field(..., ge=0, le=10, description="ST depression")
-    slope: float = Field(..., ge=0, le=2, description="Slope of peak exercise ST segment")
-    ca: float = Field(..., ge=0, le=4, description="Number of major vessels")
-    thal: float = Field(..., ge=0, le=3, description="Thalassemia")
+    thalach: float = Field(..., ge=30, le=250, description="Maximum heart rate achieved (30-250)")
+    exang: int = Field(..., ge=0, le=1, description="Exercise induced angina (0: no, 1: yes)")
+    oldpeak: float = Field(..., ge=0.0, le=10.0, description="ST depression (0-10)")
+    slope: float = Field(..., ge=0, le=2, description="Slope of peak exercise ST segment (0-2)")
+    ca: float = Field(..., ge=0, le=4, description="Number of major vessels (0-4)")
+    thal: float = Field(..., ge=0, le=3, description="Thalassemia (0-3)")
     
-    @validator('thalach')
-    def validate_heart_rate(cls, v, values):
+    @field_validator('thalach')
+    @classmethod
+    def validate_heart_rate(cls, v: float, info: ValidationInfo) -> float:
         """Validate heart rate is reasonable for age"""
-        if 'age' in values:
-            max_hr = 220 - values['age']
-            if v > max_hr * 1.1:  # Allow 10% margin
-                raise ValueError(f'Heart rate {v} seems too high for age {values["age"]}')
-        return v
-    
-    @validator('chol')
-    def validate_cholesterol(cls, v):
-        """Warn about extreme cholesterol values"""
-        if v > 500:
-            # In production, you might want to log this
-            pass
+        if not info.data:
+            return v
+            
+        age = info.data.get('age')
+        if age is not None:
+            # Theoretical max heart rate is approx 220 - age.
+            # We allow significant margin (10%) for outliers.
+            max_hr = 220 - age
+            limit = max_hr * 1.1
+            if v > limit:
+                raise ValueError(f'Heart rate {v} seems too high for age {age} (Max expected ~{int(limit)})')
         return v
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "age": 63,
                 "sex": 1,
@@ -84,7 +74,7 @@ class PredictionResponse(BaseModel):
     risk_level: str = Field(..., description="Risk level: Low, Medium, or High")
     confidence: float = Field(..., description="Model confidence score")
     timestamp: str = Field(..., description="Prediction timestamp")
-    request_id: Optional[str] = Field(None, description="Unique request identifier")
+    request_id: Optional[str] = Field(None, description="Unique trace ID for the request")
 
 class BatchPredictionRequest(BaseModel):
     """Request model for batch predictions"""
@@ -93,29 +83,19 @@ class BatchPredictionRequest(BaseModel):
         max_items=100, 
         description="List of prediction requests (max 100)"
     )
-    
-    @validator('instances')
-    def validate_instances(cls, v):
-        if len(v) == 0:
-            raise ValueError('At least one instance is required')
-        return v
 
 class BatchPredictionResponse(BaseModel):
     """Response model for batch predictions"""
     predictions: List[PredictionResponse]
-    total_processed: int
-    total_requested: int
-    success_rate: float
+    total: int
     timestamp: str
-    processing_time_ms: Optional[float] = None
 
 class HealthResponse(BaseModel):
     """Health check response"""
     status: str
     model_loaded: bool
-    model_metadata: Dict[str, Any]
+    version: str
     timestamp: str
-    uptime_seconds: Optional[float] = None
 
 class ModelInfo(BaseModel):
     """Model information response"""
@@ -124,20 +104,3 @@ class ModelInfo(BaseModel):
     loaded_at: Optional[str]
     version: Optional[str]
     features: List[str]
-    feature_count: int
-
-class ErrorResponse(BaseModel):
-    """Standard error response"""
-    error: str
-    detail: Optional[str] = None
-    timestamp: str
-    request_id: Optional[str] = None
-
-class ModelMetrics(BaseModel):
-    """Model performance metrics"""
-    accuracy: Optional[float] = None
-    precision: Optional[float] = None
-    recall: Optional[float] = None
-    f1_score: Optional[float] = None
-    roc_auc: Optional[float] = None
-    training_date: Optional[str] = None

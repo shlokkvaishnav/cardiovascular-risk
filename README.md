@@ -31,15 +31,17 @@ graph LR
     C --> D[Model Training & CV]
     D --> E[MLflow Registry]
     E --> F[Inference API]
-    F --> G[Monitoring & Logs]
+    F --> G[Next.js Web Frontend]
+    F --> H[JSON Logs / Monitoring]
 ```
 
 The system follows a modular microservice-ready pattern:
 
-*   **Data Layer**: Robust ETL pipeline with Pydantic-based schema validation to ensure data integrity before getting into the training loop.
-*   **Modeling Layer**: standardized `BaseModel` interface for all algorithms (Logistic Regression, Random Forest, SVM), ensuring plug-and-play capability for new models.
-*   **Servicing Layer**: High-performance FastAPI backend with async capabilities, supporting both real-time and batch predictions.
-*   **Observability**: Integrated MLflow for experiment tracking and structured logging for system health monitoring.
+*   **Web Interface**: A "Clean Medical" themed Next.js application for clinicians, featuring real-time validation and risk scorecards.
+*   **Data Layer**: Robust ETL pipeline with Pydantic-based schema validation to ensure data integrity.
+*   **Modeling Layer**: standardized `BaseModel` interface for all algorithms.
+*   **Servicing Layer**: High-performance FastAPI backend with medical guardrails (e.g., BP 50-300 limit).
+*   **Observability**: Structured JSON logging with unique Request IDs for distributed tracing.
 
 ---
 
