@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test:
+  test_python:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -60,9 +60,37 @@ jobs:
         name: codecov-umbrella
         fail_ci_if_error: false
 
-  build:
+  web_test:
     runs-on: ubuntu-latest
-    needs: test
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: web/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: ./web
+      run: npm ci
+    
+    - name: Lint
+      working-directory: ./web
+      run: npm run lint
+    
+    - name: Build
+      working-directory: ./web
+      run: npm run build
+      env:
+        NEXT_PUBLIC_API_URL: "http://localhost:8000" # Placeholder for build
+        NEXT_PUBLIC_API_KEY: "build-key"
+
+  build_api:
+    runs-on: ubuntu-latest
+    needs: [test_python, web_test]
     
     steps:
     - uses: actions/checkout@v3
@@ -73,6 +101,7 @@ jobs:
     - name: Build Docker image
       run: |
         docker build -t heart-disease-api:latest .
+
     
     - name: Test Docker image
       run: |
@@ -84,7 +113,7 @@ jobs:
 
   # deploy:
   #   runs-on: ubuntu-latest
-  #   needs: build
+  #   needs: build_api
   #   if: github.ref == 'refs/heads/main'
   #   
   #   steps:

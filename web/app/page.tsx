@@ -65,7 +65,7 @@ export default function Home() {
     try {
       // Use relative path for same-domain deployment
       const API_URL = "/api";
-      const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "heart-disease-secret-key-123";
+      const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "cardiovascular-risk-secret-key-123";
 
       // Note: We mount the API at /api/v1 in FastAPI, or just proxy. 
       // Let's assume FastAPI mounts the API router at /api or the root.
@@ -140,7 +140,7 @@ export default function Home() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
             >
-              Heart Disease
+              Cardiovascular Risk
             </motion.span>
             <motion.span
               className="gradient-text block"
@@ -384,7 +384,7 @@ export default function Home() {
                     <div>
                       <h3 className="text-lg font-semibold mb-2">How it works</h3>
                       <p className="text-slate-400 leading-relaxed">
-                        Enter the patient's clinical parameters in the form. Our AI model utilizing an ensemble of Logistic Regression, Random Forest, and SVM will analyze the data to predict heart disease probability in real-time.
+                        Enter the patient's clinical parameters in the form. Our AI model utilizing an ensemble of Logistic Regression, Random Forest, and SVM will analyze the data to predict cardiovascular risk probability in real-time.
                       </p>
                     </div>
                   </div>
@@ -461,7 +461,7 @@ export default function Home() {
                         <div className="mt-2 text-center text-2xl font-bold font-mono">
                           {(result.probability * 100).toFixed(1)}%
                         </div>
-                        <p className="text-center text-slate-500 text-xs mt-1">Probability of Heart Disease</p>
+                        <p className="text-center text-slate-500 text-xs mt-1">Probability of Cardiovascular Disease</p>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
@@ -546,14 +546,14 @@ export default function Home() {
           {/* Bottom */}
           <div className="pt-6 border-t border-slate-800/50 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-slate-600 text-sm">
-              © 2026 Heart Disease Prediction. Built for educational purposes.
+              © 2026 Cardiovascular Risk Prediction. Built for educational purposes.
             </p>
             <div className="flex items-center gap-4 text-sm text-slate-600">
               <a href="#" className="hover:text-blue-400 transition-colors">Privacy</a>
               <span>•</span>
               <a href="#" className="hover:text-blue-400 transition-colors">Terms</a>
               <span>•</span>
-              <a href="https://github.com/shlokkvaishnav/heart-disease-prediction" className="hover:text-blue-400 transition-colors">GitHub</a>
+              <a href="https://github.com/shlokkvaishnav/cardiovascular-risk" className="hover:text-blue-400 transition-colors">GitHub</a>
             </div>
           </div>
         </motion.footer>

@@ -1,5 +1,5 @@
 project:
-  name: heart_disease_prediction
+  name: cardiovascular_risk
   version: 0.1.0
   random_seed: 42
 
@@ -36,4 +36,4 @@ training:
   
 mlflow:
   tracking_uri: ./mlruns
-  experiment_name: heart_disease_baseline
+  experiment_name: cardiovascular_risk_baseline

@@ -54,8 +54,8 @@ coverage.xml
 
 # ML artifacts
 mlruns/
-models/artifacts/*.pkl
-models/checkpoints/*.pkl
+# models/artifacts/*.pkl
+# models/checkpoints/*.pkl
 *.h5
 *.pth
 *.onnx

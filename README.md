@@ -1,4 +1,4 @@
-# Heart Disease Prediction System
+# Cardiovascular Risk Prediction System
 ### Production-Grade Machine Learning Pipeline & API
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org)
@@ -6,7 +6,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0-EE4C2C.svg?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org)
 [![MLflow](https://img.shields.io/badge/MLflow-Tracking-0194E2.svg?style=flat&logo=mlflow&logoColor=white)](https://mlflow.org)
 [![Docker](https://img.shields.io/badge/Docker-Container-2496ED.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com)
-[![Coverage](https://img.shields.io/badge/coverage-85%25-green.svg?style=flat)](https://github.com/shlokkvaishnav/heart-disease-prediction)
+[![Coverage](https://img.shields.io/badge/coverage-85%25-green.svg?style=flat)](https://github.com/shlokkvaishnav/cardiovascular-risk)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg?style=flat)](LICENSE)
 
 [Architecture](#-system-architecture) •
@@ -75,8 +75,8 @@ The system follows a modular microservice-ready pattern:
 
 1.  **Clone the repository**:
     ```bash
-    git clone https://github.com/shlokkvaishnav/heart-disease-prediction.git
-    cd heart-disease-prediction
+    git clone https://github.com/shlokkvaishnav/cardiovascular-risk.git
+    cd cardiovascular-risk
     ```
 
 2.  **Set up the environment**:
@@ -179,10 +179,10 @@ We prioritize containerization for consistent deployment environments.
 ### Docker
 ```bash
 # Build the image
-docker build -t heart-disease-api:latest .
+docker build -t cardiovascular-risk-api:latest .
 
 # Run container
-docker run -p 8000:8000 --env-file .env heart-disease-api:latest
+docker run -p 8000:8000 --env-file .env cardiovascular-risk-api:latest
 ```
 
 ### Docker Compose
@@ -224,17 +224,3 @@ Models are evaluated on a hold-out test set (30% split) using:
 *(Note: Train the model locally to reproduce these specific results)*
 
 ---
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow the `Google Python Style Guide` and ensure all tests pass before submitting a PR.
-
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
-
----
-
-<sub>Built with ❤️ by Shlok Vaishnav. Licensed under MIT.</sub>

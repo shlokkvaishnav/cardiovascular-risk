@@ -19,7 +19,7 @@ lint:
 	mypy src/
 
 docker-build:
-	docker build -t heart-disease-api .
+	docker build -t cardiovascular-risk-api .
 
 docker-run:
 	docker-compose up

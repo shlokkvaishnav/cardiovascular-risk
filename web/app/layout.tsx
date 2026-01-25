@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Heart Disease Prediction | AI-Powered Health Analytics",
+  title: "Cardiovascular Risk Prediction | AI-Powered Health Analytics",
   description: "Advanced machine learning model to predict cardiovascular risk using ensemble methods. Get instant risk assessment with high precision.",
   keywords: ["heart disease", "prediction", "machine learning", "health analytics", "cardiovascular risk"],
 };

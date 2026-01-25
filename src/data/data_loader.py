@@ -46,10 +46,25 @@ class DataLoader:
             
     def _preprocess_raw(self, df: pd.DataFrame) -> pd.DataFrame:
         """Initial preprocessing"""
+        # Rename columns if necessary
         if 'thalch' in df.columns:
             df.rename(columns={'thalch': 'thalach'}, inplace=True)
             
+        # Define numeric columns that expect numbers
+        numeric_cols = [
+            'age', 'trestbps', 'chol', 'thalach', 'oldpeak', 
+            'ca', 'slope', 'thal', 'cp', 'restecg', 'exang', 'fbs', 'sex'
+        ]
+        
+        # Coerce to numeric (turn '?' or other strings into NaN)
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+        # Target creation
         if 'num' in df.columns:
+            # Handle potential non-numeric target
+            df['num'] = pd.to_numeric(df['num'], errors='coerce').fillna(0)
             df['target'] = df['num'].apply(lambda x: 1 if x > 0 else 0)
             
         drop_cols = ['id', 'dataset', 'num']

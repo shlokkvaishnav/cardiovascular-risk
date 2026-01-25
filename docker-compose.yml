@@ -3,7 +3,7 @@ version: '3.8'
 services:
   api:
     build: .
-    container_name: heart-disease-api
+    container_name: cardiovascular-risk-api
     ports:
       - "8000:8000"
     volumes:

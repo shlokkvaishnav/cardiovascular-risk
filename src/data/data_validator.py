@@ -152,10 +152,10 @@ class DataValidator:
     def get_data_quality_report(self, df: pd.DataFrame) -> Dict[str, Any]:
         """Generate comprehensive data quality report"""
         report = {
-            'total_rows': len(df),
-            'total_columns': len(df.columns),
-            'missing_values': df.isnull().sum().to_dict(),
-            'duplicates': df.duplicated().sum(),
+            'total_rows': int(len(df)),
+            'total_columns': int(len(df.columns)),
+            'missing_values': {k: int(v) for k, v in df.isnull().sum().to_dict().items()},
+            'duplicates': int(df.duplicated().sum()),
             'column_types': df.dtypes.astype(str).to_dict(),
             'summary_statistics': {}
         }
@@ -175,7 +175,11 @@ class DataValidator:
         categorical_cols = df.select_dtypes(include=['object', 'category']).columns
         report['categorical_distributions'] = {}
         for col in categorical_cols:
-            report['categorical_distributions'][col] = df[col].value_counts().to_dict()
+            # Convert both keys and values to native types
+            counts = df[col].value_counts().to_dict()
+            report['categorical_distributions'][col] = {
+                str(k): int(v) for k, v in counts.items()
+            }
         
         return report
     

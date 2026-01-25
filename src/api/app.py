@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, status, Request
+from fastapi import FastAPI, HTTPException, status, Request, Security, Depends
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -19,10 +20,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Security
+API_KEY_NAME = "X-API-Key"
+API_KEY = os.getenv("API_KEY", "cardiovascular-risk-secret-key-123") # Default for dev
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    """Validate API Key"""
+    if api_key_header == API_KEY:
+        return api_key_header
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Could not validate credentials"
+    )
+
 # Initialize FastAPI app with metadata
 app = FastAPI(
-    title="Heart Disease Prediction API",
-    description="Production-ready ML API for predicting heart disease risk",
+    title="Cardiovascular Risk Prediction API",
+    description="Production-ready ML API for predicting cardiovascular risk",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -31,7 +46,7 @@ app = FastAPI(
 # Add CORS middleware for production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["*"],  # Allow all for Vercel frontend
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -91,7 +106,7 @@ async def log_requests(request: Request, call_next):
 
 # Pydantic models with validation
 class PredictionRequest(BaseModel):
-    """Request model for heart disease prediction"""
+    """Request model for cardiovascular risk prediction"""
     age: float = Field(..., ge=0, le=120, description="Age in years")
     sex: int = Field(..., ge=0, le=1, description="Sex (0: female, 1: male)")
     cp: float = Field(..., ge=0, le=3, description="Chest pain type (0-3)")
@@ -128,7 +143,7 @@ class PredictionRequest(BaseModel):
 class PredictionResponse(BaseModel):
     """Response model for predictions"""
     prediction: int = Field(..., description="Binary prediction (0: no disease, 1: disease)")
-    probability: float = Field(..., ge=0, le=1, description="Probability of heart disease")
+    probability: float = Field(..., ge=0, le=1, description="Probability of cardiovascular disease")
     risk_level: str = Field(..., description="Risk level: Low, Medium, or High")
     confidence: float = Field(..., description="Model confidence score")
     timestamp: str = Field(..., description="Prediction timestamp")
@@ -193,7 +208,7 @@ async def shutdown_event():
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Heart Disease Prediction API",
+        "message": "Cardiovascular Risk Prediction API",
         "version": "1.0.0",
         "docs": "/docs",
         "health": "/health",
@@ -233,10 +248,10 @@ async def get_model_info():
         features=features
     )
 
-@app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
+@app.post("/predict", response_model=PredictionResponse, tags=["Prediction"], dependencies=[Depends(get_api_key)])
 async def predict(request: PredictionRequest):
     """
-    Make a single prediction for heart disease risk
+    Make a single prediction for cardiovascular risk
     
     - **age**: Age in years (0-120)
     - **sex**: Sex (0: female, 1: male)
@@ -311,7 +326,7 @@ async def predict(request: PredictionRequest):
             detail=f"Prediction failed: {str(e)}"
         )
 
-@app.post("/batch-predict", response_model=BatchPredictionResponse, tags=["Prediction"])
+@app.post("/batch-predict", response_model=BatchPredictionResponse, tags=["Prediction"], dependencies=[Depends(get_api_key)])
 async def batch_predict(request: BatchPredictionRequest):
     """
     Make batch predictions for multiple instances
@@ -379,6 +394,27 @@ async def reload_model():
             detail=f"Failed to reload model: {str(e)}"
         )
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+# Mount static files (Frontend)
+# Must be after API routes to avoid conflict
+static_dir = Path("web/out")
+
+if static_dir.exists():
+    app.mount("/_next", StaticFiles(directory=static_dir / "_next"), name="next")
+    
+    @app.get("/")
+    async def serve_root():
+        return FileResponse(static_dir / "index.html")
+
+    # Serve other static files (favicon, etc)
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+
+elif os.getenv("ENV") == "production":
+    logger.warning("Frontend static files not found at web/out")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
