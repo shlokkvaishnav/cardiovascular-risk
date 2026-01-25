@@ -1,0 +1,39 @@
+project:
+  name: heart_disease_prediction
+  version: 0.1.0
+  random_seed: 42
+
+data:
+  raw_path: data/raw/heart_disease_uci.csv
+  processed_path: data/processed/
+  test_size: 0.3
+  validation_size: 0.2
+
+preprocessing:
+  numerical_features:
+    - age
+    - trestbps
+    - chol
+    - thalach
+    - oldpeak
+    - ca
+  categorical_features:
+    - sex
+    - cp
+    - fbs
+    - restecg
+    - exang
+    - slope
+    - thal
+  imputation_strategy:
+    numerical: median
+    categorical: most_frequent
+
+training:
+  n_jobs: -1
+  cv_folds: 5
+  metrics: ['accuracy', 'f1', 'roc_auc']
+  
+mlflow:
+  tracking_uri: ./mlruns
+  experiment_name: heart_disease_baseline
