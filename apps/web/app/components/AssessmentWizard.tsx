@@ -272,7 +272,7 @@ export function AssessmentWizard() {
 
           <div className="field-inline">
             <span className="field-label">
-              Systolic BP <CircleHelp size={14} title={showTooltip} />
+              Systolic BP <span title={showTooltip}><CircleHelp size={14} /></span>
             </span>
             <button
               type="button"
@@ -305,7 +305,7 @@ export function AssessmentWizard() {
 
           <div className="field-inline">
             <span className="field-label">
-              Total Cholesterol <CircleHelp size={14} title={showTooltip} />
+              Total Cholesterol <span title={showTooltip}><CircleHelp size={14} /></span>
             </span>
             <button
               type="button"
@@ -338,7 +338,7 @@ export function AssessmentWizard() {
 
           <div className="field-inline">
             <span className="field-label">
-              HDL Cholesterol <CircleHelp size={14} title={showTooltip} />
+              HDL Cholesterol <span title={showTooltip}><CircleHelp size={14} /></span>
             </span>
             <button
               type="button"
