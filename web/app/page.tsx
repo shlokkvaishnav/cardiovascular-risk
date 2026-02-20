@@ -1,11 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Activity, ArrowRight, Loader2, HeartPulse, AlertCircle, CheckCircle, Info } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Activity,
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  GaugeCircle,
+  HeartPulse,
+  Info,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
 import clsx from "clsx";
 
-// --- Types ---
 interface PredictionRequest {
   age: number;
   sex: number;
@@ -28,10 +38,7 @@ interface PredictionResponse {
   risk_level: "Low" | "Medium" | "High";
   confidence: number;
   timestamp: string;
-}
-
-interface FormErrors {
-  [key: string]: string;
+  top_contributors?: Record<string, number>[] | null;
 }
 
 const initialFormData: PredictionRequest = {
@@ -44,395 +51,363 @@ const initialFormData: PredictionRequest = {
   restecg: 0,
   thalach: 150,
   exang: 0,
-  oldpeak: 0.0,
+  oldpeak: 0,
   slope: 1,
   ca: 0,
   thal: 2,
 };
 
-// --- Validation Logic ---
-const validateField = (name: keyof PredictionRequest, value: number): string | null => {
+const fieldMeta: Array<{ key: keyof PredictionRequest; label: string }> = [
+  { key: "age", label: "Age" },
+  { key: "trestbps", label: "Resting BP" },
+  { key: "chol", label: "Cholesterol" },
+  { key: "thalach", label: "Max HR" },
+  { key: "oldpeak", label: "ST Depression" },
+];
+
+const riskAdvice = {
+  High: [
+    "Escalate to urgent cardiology consult.",
+    "Prioritize ECG and troponin-based workup.",
+    "Consider inpatient monitoring based on symptoms.",
+  ],
+  Medium: [
+    "Schedule specialist follow-up within 1-4 weeks.",
+    "Reinforce lifestyle + blood pressure control.",
+    "Repeat risk reassessment after interventions.",
+  ],
+  Low: [
+    "Continue preventive screening cadence.",
+    "Maintain exercise and lipid management plan.",
+    "Reassess if symptoms or vitals change.",
+  ],
+} as const;
+
+function validateField(name: keyof PredictionRequest, value: number, all: PredictionRequest): string | null {
+  if (!Number.isFinite(value)) return "Required";
+
   switch (name) {
     case "age":
-      if (value < 1 || value > 120) return "Age must be between 1 and 120";
-      break;
+      return value < 1 || value > 120 ? "Age must be 1-120" : null;
     case "trestbps":
-      if (value < 50 || value > 300) return "BP must be between 50 and 300";
-      break;
+      return value < 50 || value > 300 ? "BP must be 50-300" : null;
     case "chol":
-      if (value < 50 || value > 600) return "Cholesterol must be realistic (50-600)";
-      break;
-    case "thalach":
-      if (value < 40 || value > 250) return "Heart rate must be between 40 and 250";
-      break;
+      return value < 50 || value > 800 ? "Cholesterol must be 50-800" : null;
+    case "thalach": {
+      if (value < 30 || value > 250) return "Heart rate must be 30-250";
+      const limit = (220 - all.age) * 1.1;
+      return value > limit ? `Likely too high for age (${Math.round(limit)} bpm)` : null;
+    }
     case "oldpeak":
-      if (value < 0 || value > 10) return "ST Depression must be between 0 and 10";
-      break;
+      return value < 0 || value > 10 ? "ST depression must be 0-10" : null;
+    default:
+      return null;
   }
-  return null;
-};
+}
 
 export default function Home() {
   const [formData, setFormData] = useState<PredictionRequest>(initialFormData);
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [result, setResult] = useState<PredictionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
-  // State for mobile responsiveness checks
-  const [activeTab, setActiveTab] = useState<"vitals" | "history">("vitals");
+  const completeness = useMemo(() => {
+    const done = Object.values(formData).filter((v) => Number.isFinite(v)).length;
+    return Math.round((done / Object.keys(formData).length) * 100);
+  }, [formData]);
+
+  const validationStatus = Object.keys(errors).length === 0 ? "All checks passed" : `${Object.keys(errors).length} validation issue(s)`;
 
   const handleInputChange = (field: keyof PredictionRequest, value: number) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    const next = { ...formData, [field]: value };
+    setFormData(next);
 
-    // Real-time validation
-    const error = validateField(field, value);
+    const message = validateField(field, value, next);
     setErrors((prev) => {
-      const newErrors = { ...prev };
-      if (error) newErrors[field] = error;
-      else delete newErrors[field];
-      return newErrors;
+      const out = { ...prev };
+      if (message) out[field] = message;
+      else delete out[field];
+      return out;
     });
   };
 
-  const hasErrors = Object.keys(errors).length > 0;
+  const applyPreset = (preset: "baseline" | "highRisk") => {
+    const next =
+      preset === "baseline"
+        ? initialFormData
+        : {
+            ...initialFormData,
+            age: 68,
+            cp: 3,
+            trestbps: 172,
+            chol: 295,
+            fbs: 1,
+            thalach: 118,
+            exang: 1,
+            oldpeak: 3.2,
+            ca: 3,
+          };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    setFormData(next);
+    const nextErrors: Record<string, string> = {};
+    fieldMeta.forEach(({ key }) => {
+      const msg = validateField(key, next[key], next);
+      if (msg) nextErrors[key] = msg;
+    });
+    setErrors(nextErrors);
+    setResult(null);
+    setApiError(null);
+  };
+
+  const hasErrors = Object.keys(errors).length > 0;
+  const gauge = Math.max(0, Math.min(100, (result?.probability ?? 0) * 100));
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (hasErrors) return;
 
     setLoading(true);
     setApiError(null);
     setResult(null);
 
-    // Artificial delay for UX
-    await new Promise(r => setTimeout(r, 800));
-
     try {
-      const res = await fetch(`/predict`, {
+      const res = await fetch("/predict", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": process.env.NEXT_PUBLIC_API_KEY ?? "cardiovascular-risk-secret-key-123",
+        },
         body: JSON.stringify(formData),
       });
 
+      const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error("Analysis failed. Please try again.");
+        throw new Error(payload?.detail ?? "Unable to complete risk analysis");
       }
 
-      const data = await res.json();
-      setResult(data);
-    } catch (err: any) {
-      setApiError(err.message || "An unexpected error occurred");
+      setResult(payload as PredictionResponse);
+    } catch (error: unknown) {
+      setApiError(error instanceof Error ? error.message : "Unexpected error occurred");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen pb-20 bg-slate-50 relative overflow-hidden">
-      {/* Background Accents */}
-      <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-blue-50 to-slate-50 pointer-events-none" />
-      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-100/50 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+    <main className="min-h-screen pb-16 bg-slate-50 relative overflow-hidden">
+      <div className="absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-blue-100/60 via-sky-50 to-transparent pointer-events-none" />
 
-      {/* Header */}
-      <header className="relative z-10 pt-12 pb-16 px-6 max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+      <header className="relative z-10 max-w-7xl mx-auto px-6 pt-12 pb-8">
+        <div className="flex flex-wrap items-end justify-between gap-5">
           <div>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white">
-                <HeartPulse size={18} strokeWidth={2.5} />
-              </div>
-              <span className="text-sm font-bold tracking-widest text-slate-500 uppercase">CardioRisk AI</span>
+            <div className="brand-pill mb-4">
+              <HeartPulse size={16} />
+              CardioRisk AI · Clinical Workbench
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight mb-4">
-              Diagnostic <span className="text-blue-600">Assistant</span>
-            </h1>
-            <p className="text-slate-600 max-w-2xl text-lg leading-relaxed">
-              Medical-grade cardiovascular risk stratification using ensemble machine learning.
-              Enter patient details below for an instant assessment.
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-slate-900">Enhanced Cardiovascular Risk Triage</h1>
+            <p className="text-slate-600 mt-3 max-w-3xl">
+              Faster clinician workflow with clearer validation, richer scorecards, and explainability-aware outputs.
             </p>
           </div>
-
-          <div className="hidden md:flex gap-8 text-sm font-medium text-slate-500">
-            <div className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-emerald-500" />
-              <span>HIPAA Compliant</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle size={16} className="text-emerald-500" />
-              <span>99.9% Uptime</span>
-            </div>
+          <div className="hidden md:flex items-center gap-5 text-sm">
+            <div className="info-chip"><ShieldCheck size={15} /> Guardrails active</div>
+            <div className="info-chip"><Sparkles size={15} /> Explainability ready</div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8 relative z-10">
-
-        {/* Form Section */}
-        <div className="lg:col-span-8">
-          <form onSubmit={handleSubmit} className="space-y-8">
-
-            {/* 1. Clinical Vitals */}
-            <section className="medical-card p-8 animate-slide-up" style={{ animationDelay: "0.1s" }}>
-              <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
-                <Activity className="text-blue-600" size={20} />
-                <h2 className="text-lg font-bold text-slate-800">Clinical Vitals</h2>
+      <section className="relative z-10 max-w-7xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <form onSubmit={submit} className="lg:col-span-8 space-y-6">
+          <div className="medical-card p-6 md:p-8">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <h2 className="section-title"><Activity size={18} /> Patient Intake</h2>
+              <div className="flex gap-2">
+                <button type="button" className="preset-btn" onClick={() => applyPreset("baseline")}>Baseline preset</button>
+                <button type="button" className="preset-btn" onClick={() => applyPreset("highRisk")}>High-risk preset</button>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                <InputGroup
-                  label="Age"
-                  error={errors.age}
-                  suffix="years"
-                >
-                  <input
-                    type="number"
-                    className="medical-input"
-                    value={formData.age}
-                    onChange={(e) => handleInputChange("age", Number(e.target.value))}
-                  />
-                </InputGroup>
-
-                <InputGroup label="Gender">
-                  <div className="btn-select-group">
-                    {[{ v: 1, l: "Male" }, { v: 0, l: "Female" }].map(o => (
-                      <button
-                        key={o.v}
-                        type="button"
-                        onClick={() => handleInputChange("sex", o.v)}
-                        className={clsx("btn-select-option", formData.sex === o.v && "selected")}
-                      >
-                        {o.l}
-                      </button>
-                    ))}
-                  </div>
-                </InputGroup>
-
-                <InputGroup label="Resting Blood Pressure" error={errors.trestbps} suffix="mm Hg">
-                  <input type="number" className="medical-input" value={formData.trestbps} onChange={(e) => handleInputChange("trestbps", Number(e.target.value))} />
-                </InputGroup>
-
-                <InputGroup label="Serum Cholesterol" error={errors.chol} suffix="mg/dL">
-                  <input type="number" className="medical-input" value={formData.chol} onChange={(e) => handleInputChange("chol", Number(e.target.value))} />
-                </InputGroup>
-
-                <InputGroup label="Max Heart Rate" error={errors.thalach} suffix="bpm">
-                  <input type="number" className="medical-input" value={formData.thalach} onChange={(e) => handleInputChange("thalach", Number(e.target.value))} />
-                </InputGroup>
-
-                <InputGroup label="Fasting Blood Sugar > 120">
-                  <div className="btn-select-group">
-                    <button type="button" onClick={() => handleInputChange("fbs", 1)} className={clsx("btn-select-option", formData.fbs === 1 && "selected")}>Yes</button>
-                    <button type="button" onClick={() => handleInputChange("fbs", 0)} className={clsx("btn-select-option", formData.fbs === 0 && "selected")}>No</button>
-                  </div>
-                </InputGroup>
-              </div>
-            </section>
-
-            {/* 2. Cardiac History & Tests */}
-            <section className="medical-card p-8 animate-slide-up" style={{ animationDelay: "0.2s" }}>
-              <div className="flex items-center gap-3 mb-6 border-b border-slate-100 pb-4">
-                <HeartPulse className="text-blue-600" size={20} />
-                <h2 className="text-lg font-bold text-slate-800">History & Stress Tests</h2>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
-                <InputGroup label="Chest Pain Type">
-                  <select
-                    className="medical-input cursor-pointer"
-                    value={formData.cp}
-                    onChange={(e) => handleInputChange("cp", Number(e.target.value))}
-                  >
-                    <option value={0}>Typical Angina</option>
-                    <option value={1}>Atypical Angina</option>
-                    <option value={2}>Non-anginal Pain</option>
-                    <option value={3}>Asymptomatic</option>
-                  </select>
-                </InputGroup>
-
-                <InputGroup label="Resting ECG Results">
-                  <select
-                    className="medical-input cursor-pointer"
-                    value={formData.restecg}
-                    onChange={(e) => handleInputChange("restecg", Number(e.target.value))}
-                  >
-                    <option value={0}>Normal</option>
-                    <option value={1}>ST-T Wave Abnormality</option>
-                    <option value={2}>Left Ventricular Hypertrophy</option>
-                  </select>
-                </InputGroup>
-
-                <InputGroup label="Exercise Induced Angina">
-                  <div className="btn-select-group">
-                    <button type="button" onClick={() => handleInputChange("exang", 1)} className={clsx("btn-select-option", formData.exang === 1 && "selected")}>Yes</button>
-                    <button type="button" onClick={() => handleInputChange("exang", 0)} className={clsx("btn-select-option", formData.exang === 0 && "selected")}>No</button>
-                  </div>
-                </InputGroup>
-
-                <InputGroup label="ST Depression (Oldpeak)" error={errors.oldpeak}>
-                  <input
-                    type="number"
-                    step="0.1"
-                    className="medical-input"
-                    value={formData.oldpeak}
-                    onChange={(e) => handleInputChange("oldpeak", Number(e.target.value))}
-                  />
-                </InputGroup>
-
-                <InputGroup label="Slope of Peak Exercise ST">
-                  <select
-                    className="medical-input cursor-pointer"
-                    value={formData.slope}
-                    onChange={(e) => handleInputChange("slope", Number(e.target.value))}
-                  >
-                    <option value={0}>Upsloping</option>
-                    <option value={1}>Flat</option>
-                    <option value={2}>Downsloping</option>
-                  </select>
-                </InputGroup>
-              </div>
-            </section>
-
-            <div className="flex justify-end pt-4">
-              <button
-                type="submit"
-                disabled={loading || hasErrors}
-                className="btn-medical-primary flex items-center gap-2 group text-lg px-8 py-4 shadow-lg shadow-blue-500/20"
-              >
-                {loading && <Loader2 className="animate-spin" size={20} />}
-                {loading ? "Processing..." : "Run Risk Analysis"}
-                <ArrowRight className="group-hover:translate-x-1 transition-transform" size={20} />
-              </button>
             </div>
 
-          </form>
-        </div>
+            <div className="status-grid mb-6">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide">Completeness</p>
+                <p className="text-lg font-semibold text-slate-900">{completeness}%</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wide">Validation</p>
+                <p className={clsx("text-sm font-semibold", hasErrors ? "text-amber-600" : "text-emerald-600")}>{validationStatus}</p>
+              </div>
+              <div className="status-bar"><span style={{ width: `${completeness}%` }} /></div>
+            </div>
 
-        {/* Results Sidebar */}
-        <div className="lg:col-span-4 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <InputGroup label="Age" error={errors.age} suffix="years"><input type="number" className="medical-input" value={formData.age} onChange={(e) => handleInputChange("age", Number(e.target.value))} /></InputGroup>
+              <InputGroup label="Sex">
+                <div className="btn-select-group">
+                  <button type="button" className={clsx("btn-select-option", formData.sex === 1 && "selected")} onClick={() => handleInputChange("sex", 1)}>Male</button>
+                  <button type="button" className={clsx("btn-select-option", formData.sex === 0 && "selected")} onClick={() => handleInputChange("sex", 0)}>Female</button>
+                </div>
+              </InputGroup>
+
+              <InputGroup label="Resting BP" error={errors.trestbps} suffix="mmHg"><input type="number" className="medical-input" value={formData.trestbps} onChange={(e) => handleInputChange("trestbps", Number(e.target.value))} /></InputGroup>
+              <InputGroup label="Cholesterol" error={errors.chol} suffix="mg/dL"><input type="number" className="medical-input" value={formData.chol} onChange={(e) => handleInputChange("chol", Number(e.target.value))} /></InputGroup>
+
+              <InputGroup label="Max Heart Rate" error={errors.thalach} suffix="bpm"><input type="number" className="medical-input" value={formData.thalach} onChange={(e) => handleInputChange("thalach", Number(e.target.value))} /></InputGroup>
+              <InputGroup label="Fasting Blood Sugar > 120">
+                <div className="btn-select-group">
+                  <button type="button" className={clsx("btn-select-option", formData.fbs === 1 && "selected")} onClick={() => handleInputChange("fbs", 1)}>Yes</button>
+                  <button type="button" className={clsx("btn-select-option", formData.fbs === 0 && "selected")} onClick={() => handleInputChange("fbs", 0)}>No</button>
+                </div>
+              </InputGroup>
+
+              <InputGroup label="Chest Pain Type">
+                <select className="medical-input" value={formData.cp} onChange={(e) => handleInputChange("cp", Number(e.target.value))}>
+                  <option value={0}>Typical Angina</option>
+                  <option value={1}>Atypical Angina</option>
+                  <option value={2}>Non-anginal Pain</option>
+                  <option value={3}>Asymptomatic</option>
+                </select>
+              </InputGroup>
+              <InputGroup label="Resting ECG">
+                <select className="medical-input" value={formData.restecg} onChange={(e) => handleInputChange("restecg", Number(e.target.value))}>
+                  <option value={0}>Normal</option>
+                  <option value={1}>ST-T Wave Abnormality</option>
+                  <option value={2}>Left Ventricular Hypertrophy</option>
+                </select>
+              </InputGroup>
+
+              <InputGroup label="Exercise-induced Angina">
+                <div className="btn-select-group">
+                  <button type="button" className={clsx("btn-select-option", formData.exang === 1 && "selected")} onClick={() => handleInputChange("exang", 1)}>Yes</button>
+                  <button type="button" className={clsx("btn-select-option", formData.exang === 0 && "selected")} onClick={() => handleInputChange("exang", 0)}>No</button>
+                </div>
+              </InputGroup>
+              <InputGroup label="ST Depression" error={errors.oldpeak}><input type="number" step="0.1" className="medical-input" value={formData.oldpeak} onChange={(e) => handleInputChange("oldpeak", Number(e.target.value))} /></InputGroup>
+
+              <InputGroup label="ST Slope">
+                <select className="medical-input" value={formData.slope} onChange={(e) => handleInputChange("slope", Number(e.target.value))}>
+                  <option value={0}>Upsloping</option>
+                  <option value={1}>Flat</option>
+                  <option value={2}>Downsloping</option>
+                </select>
+              </InputGroup>
+              <InputGroup label="Major Vessels (ca)"><input type="number" className="medical-input" value={formData.ca} onChange={(e) => handleInputChange("ca", Number(e.target.value))} /></InputGroup>
+            </div>
+
+            <div className="mt-7 flex justify-end">
+              <button type="submit" disabled={loading || hasErrors} className="btn-medical-primary px-8 py-3.5 flex items-center gap-2">
+                {loading ? <Loader2 size={18} className="animate-spin" /> : <GaugeCircle size={18} />}
+                {loading ? "Analyzing..." : "Run Risk Analysis"}
+                <ArrowRight size={17} />
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <aside className="lg:col-span-4 space-y-5 lg:sticky lg:top-6 lg:h-fit">
           <AnimatePresence mode="wait">
             {!result && !loading && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="bg-white/50 backdrop-blur border border-slate-200 rounded-2xl p-8 text-center h-full flex flex-col items-center justify-center min-h-[300px]"
-              >
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 text-slate-400">
-                  <Activity size={32} />
-                </div>
-                <h3 className="text-slate-900 font-semibold mb-2">Ready to Analyze</h3>
-                <p className="text-slate-500 text-sm">Fill out the patient form to generate a detailed risk report.</p>
+              <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="result-shell">
+                <Activity size={26} />
+                <h3 className="font-semibold text-slate-800">Awaiting Analysis</h3>
+                <p className="text-sm text-slate-500 text-center">Enter patient data and submit to generate a stratified clinical risk report.</p>
               </motion.div>
             )}
 
             {loading && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="bg-white border border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center h-full min-h-[300px]"
-              >
-                <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                <p className="text-slate-600 font-medium">Running Ensemble Models...</p>
-                <p className="text-slate-400 text-xs mt-2">Connecting to inference engine</p>
+              <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="result-shell">
+                <Loader2 size={28} className="animate-spin" />
+                <h3 className="font-semibold text-slate-800">Inference in progress</h3>
+                <p className="text-sm text-slate-500">Computing risk probability and confidence profile...</p>
               </motion.div>
             )}
 
             {result && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="space-y-6"
-              >
-                {/* Primary Scorecard */}
-                <div className={clsx(
-                  "rounded-2xl p-8 border-2 shadow-xl",
-                  result.risk_level === "High" ? "bg-white border-red-500 shadow-red-500/10" :
-                    result.risk_level === "Medium" ? "bg-white border-amber-500 shadow-amber-500/10" :
-                      "bg-white border-emerald-500 shadow-emerald-500/10"
-                )}>
-                  <div className="flex items-center justify-between mb-8">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Risk Prediction</span>
-                    <span className="text-[10px] font-mono text-slate-400">{new Date().toLocaleDateString()}</span>
-                  </div>
+              <motion.div key="result" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={clsx("result-card", `tone-${result.risk_level.toLowerCase()}`)}>
+                <p className="text-xs uppercase tracking-wide text-slate-500">Predicted risk</p>
+                <h3 className="text-3xl font-bold mt-1">{result.risk_level}</h3>
 
-                  <div className="text-center mb-8">
-                    <h2 className={clsx(
-                      "text-5xl font-bold mb-2 tracking-tight",
-                      result.risk_level === "High" ? "text-red-600" :
-                        result.risk_level === "Medium" ? "text-amber-500" :
-                          "text-emerald-600"
-                    )}>
-                      {result.risk_level} Risk
-                    </h2>
-                    <p className="text-slate-500 font-medium">
-                      Probability: <span className="text-slate-900">{(result.probability * 100).toFixed(1)}%</span>
-                    </p>
-                  </div>
-
-                  {/* Confidence Bar */}
-                  <div className="mb-6">
-                    <div className="flex justify-between text-xs text-slate-500 mb-2">
-                      <span>Model Confidence</span>
-                      <span>{(result.confidence * 100).toFixed(0)}%</span>
-                    </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-slate-800 rounded-full transition-all duration-1000"
-                        style={{ width: `${result.confidence * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className={clsx(
-                    "p-4 rounded-xl text-sm leading-relaxed",
-                    result.risk_level === "High" ? "bg-red-50 text-red-800" :
-                      result.risk_level === "Medium" ? "bg-amber-50 text-amber-900" :
-                        "bg-emerald-50 text-emerald-800"
-                  )}>
-                    <div className="flex gap-2">
-                      <Info size={16} className="shrink-0 mt-0.5" />
-                      <p>
-                        {result.risk_level === "High" && "Patient shows significant indicators of cardiovascular disease. Immediate specialist referral recommended."}
-                        {result.risk_level === "Medium" && "Moderate risk factors detected. Suggest lifestyle intervention and 3-month follow-up."}
-                        {result.risk_level === "Low" && "All vitals within normal range. Continue regular preventive check-ups."}
-                      </p>
+                <div className="gauge-wrap mt-4">
+                  <div className="risk-gauge" style={{ background: `conic-gradient(var(--gauge-color) ${gauge}%, #e2e8f0 ${gauge}% 100%)` }}>
+                    <div className="risk-gauge-core">
+                      <span className="text-2xl font-bold">{gauge.toFixed(0)}%</span>
+                      <span className="text-[11px] text-slate-500">Probability</span>
                     </div>
                   </div>
                 </div>
 
+                <div className="metric-row mt-4">
+                  <span>Model confidence</span>
+                  <strong>{(result.confidence * 100).toFixed(0)}%</strong>
+                </div>
+                <div className="metric-track"><span style={{ width: `${result.confidence * 100}%` }} /></div>
+
+                {result.top_contributors && result.top_contributors.length > 0 && (
+                  <div className="mt-5">
+                    <p className="text-xs uppercase tracking-wide text-slate-500 mb-2">Top contributing factors</p>
+                    <ul className="space-y-2">
+                      {result.top_contributors.map((entry, idx) => {
+                        const [k, v] = Object.entries(entry)[0];
+                        return (
+                          <li key={`${k}-${idx}`} className="contrib-row">
+                            <span>{k}</span>
+                            <span>{v.toFixed(2)}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="advice-box mt-5">
+                  <Info size={16} className="shrink-0 mt-0.5" />
+                  <ul className="space-y-1">
+                    {riskAdvice[result.risk_level].map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
 
           {apiError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl flex items-start gap-3">
-              <AlertCircle size={20} className="shrink-0 mt-0.5" />
+            <div className="error-box">
+              <AlertCircle size={18} className="shrink-0 mt-0.5" />
               <p className="text-sm">{apiError}</p>
             </div>
           )}
-        </div>
-      </div>
+
+          <div className="trust-box">
+            <CheckCircle2 size={16} className="text-emerald-600" />
+            <p className="text-xs text-slate-600">Decision-support only. Always combine with physician judgment and complete diagnostic context.</p>
+          </div>
+        </aside>
+      </section>
     </main>
   );
 }
 
-// --- Helper Components ---
-
-function InputGroup({ label, children, suffix, error }: { label: string, children: React.ReactNode, suffix?: string, error?: string }) {
+function InputGroup({
+  label,
+  children,
+  suffix,
+  error,
+}: {
+  label: string;
+  children: React.ReactNode;
+  suffix?: string;
+  error?: string;
+}) {
   return (
-    <div className="medical-input-group">
-      <label className={clsx(
-        "medical-label flex justify-between",
-        error ? "text-red-500" : ""
-      )}>
+    <div>
+      <label className={clsx("medical-label flex items-center justify-between", error && "text-red-500")}>
         {label}
-        {error && <span className="text-[10px] normal-case font-normal">{error}</span>}
+        {error ? <span className="text-[10px] normal-case font-normal">{error}</span> : null}
       </label>
       <div className="relative">
         {children}
-        {suffix && <span className="medical-suffix">{suffix}</span>}
+        {suffix ? <span className="medical-suffix">{suffix}</span> : null}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 API schemas and validation models
 Centralized location for all Pydantic models
 """
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
+from pydantic import BaseModel, Field, field_validator, ValidationInfo, model_validator
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
@@ -30,6 +30,18 @@ class PredictionRequest(BaseModel):
     slope: float = Field(..., ge=0, le=2, description="Slope of peak exercise ST segment (0-2)")
     ca: float = Field(..., ge=0, le=4, description="Number of major vessels (0-4)")
     thal: float = Field(..., ge=0, le=3, description="Thalassemia (0-3)")
+
+    @model_validator(mode="after")
+    def validate_hemodynamic_consistency(self) -> "PredictionRequest":
+        """Cross-field plausibility checks for medical safety."""
+        pulse_pressure = self.trestbps - self.oldpeak * 10
+        if pulse_pressure < 30:
+            raise ValueError("Hemodynamic pattern is inconsistent: very low inferred pulse pressure")
+
+        if self.age < 18 and self.ca > 2:
+            raise ValueError("Major vessel count is implausible for pediatric age")
+
+        return self
     
     @field_validator('thalach')
     @classmethod
@@ -75,11 +87,16 @@ class PredictionResponse(BaseModel):
     confidence: float = Field(..., description="Model confidence score")
     timestamp: str = Field(..., description="Prediction timestamp")
     request_id: Optional[str] = Field(None, description="Unique trace ID for the request")
+    top_contributors: Optional[List[Dict[str, float]]] = Field(
+        default=None,
+        description="Top features influencing the prediction (proxy explanation)."
+    )
 
 class BatchPredictionRequest(BaseModel):
     """Request model for batch predictions"""
     instances: List[PredictionRequest] = Field(
         ..., 
+        min_items=1,
         max_items=100, 
         description="List of prediction requests (max 100)"
     )

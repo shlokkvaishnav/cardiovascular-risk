@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Tuple
 import pandas as pd
 import logging
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class DataSchema(BaseModel):
     ca: float
     thal: float
     
-    @validator('age')
+    @field_validator('age')
     def validate_age(cls, v):
         if not 0 < v < 120:
             raise ValueError('Age must be between 0 and 120')
@@ -65,7 +65,7 @@ class DataLoader:
         if 'num' in df.columns:
             # Handle potential non-numeric target
             df['num'] = pd.to_numeric(df['num'], errors='coerce').fillna(0)
-            df['target'] = df['num'].apply(lambda x: 1 if x > 0 else 0)
+            df['target'] = (df['num'] > 0).astype('int8')
             
         drop_cols = ['id', 'dataset', 'num']
         df.drop(columns=[c for c in drop_cols if c in df.columns], 
