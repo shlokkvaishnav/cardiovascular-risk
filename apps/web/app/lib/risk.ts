@@ -1,5 +1,7 @@
 export type Sex = "female" | "male";
 export type ActivityLevel = "low" | "moderate" | "high";
+export type SmokingStatus = "never" | "former" | "current";
+export type FamilyHistoryType = "none" | "male_lt55" | "female_lt65" | "both";
 
 export type AssessmentData = {
   age: number | null;
@@ -8,9 +10,11 @@ export type AssessmentData = {
   totalCholesterol: number | null;
   hdlCholesterol: number | null;
   smoking: boolean | null;
+  smokingStatus: SmokingStatus | null;
   activityLevel: ActivityLevel | null;
   diabetes: boolean | null;
   familyHistory: boolean | null;
+  familyHistoryType: FamilyHistoryType | null;
   onBpMedication: boolean | null;
   unknownVitals: {
     systolicBp: boolean;
@@ -45,9 +49,11 @@ export function createEmptyAssessment(): AssessmentData {
     totalCholesterol: null,
     hdlCholesterol: null,
     smoking: null,
+    smokingStatus: null,
     activityLevel: null,
     diabetes: null,
     familyHistory: null,
+    familyHistoryType: null,
     onBpMedication: null,
     unknownVitals: {
       systolicBp: false,
@@ -100,9 +106,12 @@ export function scoreRisk(data: AssessmentData): RiskResult {
     rawScore += 0.018;
   }
 
-  if (data.smoking) {
+  if (data.smokingStatus === "current" || data.smoking) {
     rawScore += 0.06;
     drivers.push({ label: "Current smoking", impact: 0.06 });
+  } else if (data.smokingStatus === "former") {
+    rawScore += 0.022;
+    drivers.push({ label: "Former smoking history", impact: 0.022 });
   }
 
   if (data.activityLevel === "low") {
@@ -120,7 +129,11 @@ export function scoreRisk(data: AssessmentData): RiskResult {
     drivers.push({ label: "Diabetes history", impact: 0.08 });
   }
 
-  if (data.familyHistory) {
+  if (data.familyHistoryType && data.familyHistoryType !== "none") {
+    const familyImpact = data.familyHistoryType === "both" ? 0.035 : 0.024;
+    rawScore += familyImpact;
+    drivers.push({ label: "Family cardiac history", impact: familyImpact });
+  } else if (data.familyHistory) {
     rawScore += 0.03;
     drivers.push({ label: "Family cardiac history", impact: 0.03 });
   }
@@ -171,4 +184,3 @@ export function scoreRisk(data: AssessmentData): RiskResult {
     recommendations,
   };
 }
-
