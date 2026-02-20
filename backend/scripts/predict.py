@@ -12,7 +12,8 @@ import json
 from datetime import datetime
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils.logger import setup_logger
 from src.data.data_validator import DataValidator
@@ -21,15 +22,20 @@ def main(args):
     """Main prediction function"""
     
     # Load configuration
-    with open(args.config) as f:
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     
     # Setup logging
-    logger = setup_logger(config, log_file="logs/predict.log")
+    logger = setup_logger(config, log_file=str(PROJECT_ROOT / "logs" / "predict.log"))
     logger.info("Starting prediction pipeline...")
     
     # Load model
     model_path = Path(args.model_path)
+    if not model_path.is_absolute():
+        model_path = PROJECT_ROOT / model_path
     if not model_path.exists():
         logger.error(f"Model not found at {model_path}")
         sys.exit(1)
@@ -43,6 +49,8 @@ def main(args):
     
     # Load input data
     input_path = Path(args.input)
+    if not input_path.is_absolute():
+        input_path = PROJECT_ROOT / input_path
     if not input_path.exists():
         logger.error(f"Input file not found at {input_path}")
         sys.exit(1)
@@ -85,6 +93,8 @@ def main(args):
         
         # Save results
         output_path = Path(args.output)
+        if not output_path.is_absolute():
+            output_path = PROJECT_ROOT / output_path
         output_path.parent.mkdir(parents=True, exist_ok=True)
         results.to_csv(output_path, index=False)
         logger.info(f"Predictions saved to {output_path}")
@@ -127,7 +137,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Make predictions on new data")
     parser.add_argument(
         "--config", 
-        default="config/config.yaml",
+        default=str(PROJECT_ROOT / "config" / "config.yaml"),
         help="Path to configuration file"
     )
     parser.add_argument(
@@ -137,12 +147,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output",
-        default="data/predictions/predictions.csv",
+        default=str(PROJECT_ROOT / "data" / "predictions" / "predictions.csv"),
         help="Path to output CSV file"
     )
     parser.add_argument(
         "--model-path",
-        default="models/artifacts/best_model.pkl",
+        default=str(PROJECT_ROOT / "models" / "artifacts" / "best_model.pkl"),
         help="Path to trained model"
     )
     parser.add_argument(

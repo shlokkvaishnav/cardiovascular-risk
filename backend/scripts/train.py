@@ -10,7 +10,8 @@ import json
 from datetime import datetime
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.data.data_loader import DataLoader
 from src.data.data_validator import DataValidator
@@ -25,6 +26,8 @@ def main(args):
     
     # Load configuration
     config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
     if not config_path.exists():
         print(f"Error: Config file not found at {config_path}")
         sys.exit(1)
@@ -33,7 +36,7 @@ def main(args):
         config = yaml.safe_load(f)
     
     # Setup logging
-    logger = setup_logger(config, log_file="logs/train.log")
+    logger = setup_logger(config, log_file=str(PROJECT_ROOT / "logs" / "train.log"))
     logger.info("="*60)
     logger.info("Starting training pipeline...")
     logger.info(f"Configuration: {config_path}")
@@ -43,7 +46,10 @@ def main(args):
         # Load data
         logger.info("\n[1/6] Loading data...")
         data_loader = DataLoader(config)
-        df = data_loader.load_data(Path(config['data']['raw_path']))
+        raw_path = Path(config['data']['raw_path'])
+        if not raw_path.is_absolute():
+            raw_path = PROJECT_ROOT / raw_path
+        df = data_loader.load_data(raw_path)
         logger.info(f"Loaded dataset with shape: {df.shape}")
         
         # Validate data
@@ -67,7 +73,7 @@ def main(args):
             
             # Generate data quality report
             quality_report = validator.get_data_quality_report(df)
-            report_path = Path("logs/data_quality_report.json")
+            report_path = PROJECT_ROOT / "logs" / "data_quality_report.json"
             report_path.parent.mkdir(parents=True, exist_ok=True)
             with open(report_path, 'w') as f:
                 json.dump(quality_report, f, indent=2)
@@ -92,7 +98,7 @@ def main(args):
             logger.info(f"  {model_name}: {score:.4f}")
         
         # Load best model for evaluation
-        best_model_path = Path("models/artifacts/best_model.pkl")
+        best_model_path = PROJECT_ROOT / "models" / "artifacts" / "best_model.pkl"
         best_model = joblib.load(best_model_path)
         
         # Evaluate on test set
@@ -111,7 +117,7 @@ def main(args):
         )
         
         # Save metrics
-        metrics_path = Path("logs/evaluation/best_model_metrics.json")
+        metrics_path = PROJECT_ROOT / "logs" / "evaluation" / "best_model_metrics.json"
         metrics_path.parent.mkdir(parents=True, exist_ok=True)
         evaluator.save_metrics(metrics, metrics_path)
         
@@ -122,7 +128,7 @@ def main(args):
         # Create visualizations
         if args.create_plots:
             logger.info("\n[6/6] Creating visualizations...")
-            visualizer = ModelVisualizer(output_dir=Path("logs/visualizations"))
+            visualizer = ModelVisualizer(output_dir=PROJECT_ROOT / "logs" / "visualizations")
             
             feature_names = None
             if hasattr(best_model, "named_steps") and "preprocessor" in best_model.named_steps:
@@ -170,7 +176,8 @@ def main(args):
             }
         }
         
-        metadata_path = Path("models/artifacts/training_metadata.json")
+        metadata_path = PROJECT_ROOT / "models" / "artifacts" / "training_metadata.json"
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
         logger.info(f"Training metadata saved to {metadata_path}")
@@ -187,7 +194,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train heart disease prediction models")
     parser.add_argument(
         "--config", 
-        default="config/config.yaml",
+        default=str(PROJECT_ROOT / "config" / "config.yaml"),
         help="Path to configuration file"
     )
     parser.add_argument(

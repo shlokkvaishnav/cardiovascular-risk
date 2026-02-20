@@ -2,14 +2,14 @@ version: '3.8'
 
 services:
   api:
-    build: .
+    build: ./backend
     container_name: cardiovascular-risk-api
     ports:
       - "8000:8000"
     volumes:
-      - ./models:/app/models
-      - ./config:/app/config
-      - ./logs:/app/logs
+      - ./backend/models:/app/models
+      - ./backend/config:/app/config
+      - ./backend/logs:/app/logs
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO

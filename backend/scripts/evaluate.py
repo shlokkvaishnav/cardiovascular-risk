@@ -11,7 +11,8 @@ import sys
 import json
 
 # Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.utils.logger import setup_logger
 from src.evaluation.metrics import ModelEvaluator
@@ -23,15 +24,20 @@ def main(args):
     """Main evaluation function"""
     
     # Load configuration
-    with open(args.config) as f:
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    with open(config_path) as f:
         config = yaml.safe_load(f)
     
     # Setup logging
-    logger = setup_logger(config, log_file="logs/evaluate.log")
+    logger = setup_logger(config, log_file=str(PROJECT_ROOT / "logs" / "evaluate.log"))
     logger.info("Starting evaluation pipeline...")
     
     # Load model
     model_path = Path(args.model_path)
+    if not model_path.is_absolute():
+        model_path = PROJECT_ROOT / model_path
     if not model_path.exists():
         logger.error(f"Model not found at {model_path}")
         sys.exit(1)
@@ -45,7 +51,10 @@ def main(args):
     
     # Load and prepare data
     data_loader = DataLoader(config)
-    df = data_loader.load_data(Path(config['data']['raw_path']))
+    raw_path = Path(config['data']['raw_path'])
+    if not raw_path.is_absolute():
+        raw_path = PROJECT_ROOT / raw_path
+    df = data_loader.load_data(raw_path)
     
     feature_engineer = FeatureEngineer(config)
     X_train, X_test, y_train, y_test = feature_engineer.prepare_features(df)
@@ -87,6 +96,8 @@ def main(args):
     
     # Save metrics
     output_dir = Path(args.output_dir)
+    if not output_dir.is_absolute():
+        output_dir = PROJECT_ROOT / output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
     
     metrics_path = output_dir / f"{args.model_name}_metrics.json"
@@ -122,12 +133,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate trained model")
     parser.add_argument(
         "--config",
-        default="config/config.yaml",
+        default=str(PROJECT_ROOT / "config" / "config.yaml"),
         help="Path to configuration file"
     )
     parser.add_argument(
         "--model-path",
-        default="models/artifacts/best_model.pkl",
+        default=str(PROJECT_ROOT / "models" / "artifacts" / "best_model.pkl"),
         help="Path to trained model"
     )
     parser.add_argument(
@@ -137,7 +148,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output-dir",
-        default="logs/evaluation",
+        default=str(PROJECT_ROOT / "logs" / "evaluation"),
         help="Directory to save evaluation results"
     )
     parser.add_argument(

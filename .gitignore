@@ -53,23 +53,25 @@ coverage.xml
 .hypothesis/
 
 # ML artifacts
-mlruns/
-# models/artifacts/*.pkl
+backend/mlruns/
+backend/test_mlruns/
+backend/models/artifacts/*
+!backend/models/artifacts/.gitkeep
 # models/checkpoints/*.pkl
 *.h5
 *.pth
 *.onnx
 
 # Logs
-logs/*.log
-logs/**/*.log
+backend/logs/*
+!backend/logs/.gitkeep
 *.log
 
 # Data
-data/processed/*
-!data/processed/.gitkeep
-data/external/*
-!data/external/.gitkeep
+backend/data/processed/*
+!backend/data/processed/.gitkeep
+backend/data/external/*
+!backend/data/external/.gitkeep
 
 # Temporary files
 *.tmp

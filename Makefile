@@ -1,25 +1,25 @@
 .PHONY: install test train predict clean
 
 install:
-	pip install -e ".[dev,viz]"
+	pip install -e "backend[dev,viz]"
 	pre-commit install
 
 test:
-	pytest tests/ -v --cov=src --cov-report=html
+	pytest backend/tests/ -v --cov=backend/src --cov-report=html
 
 train:
-	python scripts/train.py --config config/config.yaml
+	python backend/scripts/train.py --config backend/config/config.yaml
 
 predict:
-	python scripts/predict.py --input data/test_sample.csv
+	python backend/scripts/predict.py --input backend/data/test_sample.csv
 
 lint:
-	black src/ tests/
-	flake8 src/ tests/
-	mypy src/
+	black backend/src/ backend/tests/
+	flake8 backend/src/ backend/tests/
+	mypy backend/src/
 
 docker-build:
-	docker build -t cardiovascular-risk-api .
+	docker build -t cardiovascular-risk-api backend
 
 docker-run:
 	docker-compose up

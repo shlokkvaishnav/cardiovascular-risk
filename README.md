@@ -1,4 +1,4 @@
-# Cardiovascular Risk Prediction System
+﻿# Cardiovascular Risk Prediction System
 ### Production-Grade Machine Learning Pipeline & API
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg?style=flat&logo=python&logoColor=white)](https://www.python.org)
@@ -9,16 +9,17 @@
 [![Coverage](https://img.shields.io/badge/coverage-85%25-green.svg?style=flat)](https://github.com/shlokkvaishnav/cardiovascular-risk)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg?style=flat)](LICENSE)
 
-[Architecture](#-system-architecture) �
-[Features](#-key-features) �
-[Getting Started](#-getting-started) �
-[API](#-api-documentation) �
-[Data Pipeline](#-data-pipeline) �
+[Architecture](#-system-architecture) •
+[Features](#-key-features) •
+[Layout](#-repo-layout) •
+[Getting Started](#-getting-started) •
+[API](#-api-documentation) •
+[Data Pipeline](#-data-pipeline) •
 [Deployment](#-deployment)
 
 ---
 
-## 🏗 System Architecture
+## ðŸ— System Architecture
 
 This project implements a scalable, end-to-end machine learning system designed focusing on reproducibility, maintainability, and deployment readiness. It is architected to handle the entire ML lifecycle from data ingestion to production inference.
 
@@ -45,7 +46,14 @@ The system follows a modular microservice-ready pattern:
 
 ---
 
-## 🚀 Key Features
+## ðŸ—‚ Repo Layout
+
+*   `backend/` — FastAPI service, ML pipeline, configs, data, models, logs
+*   `apps/web/` — Next.js frontend
+
+---
+
+## ðŸš€ Key Features
 
 ### Engineering Excellence
 *   **Type Safety**: 100% type-annotated codebase using Python `typing` module, validated with `mypy`.
@@ -67,7 +75,7 @@ The system follows a modular microservice-ready pattern:
 
 ---
 
-## ⚡ Getting Started
+## âš¡ Getting Started
 
 ### Prerequisites
 *   Python 3.10+
@@ -83,6 +91,11 @@ The system follows a modular microservice-ready pattern:
 
 2.  **Set up the environment**:
     ```bash
+    cd cardiovascular-risk
+    
+    # Backend setup
+    cd backend
+    
     # Create virtual environment
     python -m venv .venv
     
@@ -102,9 +115,9 @@ The system follows a modular microservice-ready pattern:
 
 ---
 
-## 🔄 Data Pipeline
+## ðŸ”„ Data Pipeline
 
-The pipeline is configuration-driven via `config/config.yaml`.
+The pipeline is configuration-driven via `backend/config/config.yaml`.
 
 ### 1. Ingestion & Validation
 We use strict schema validation to prevent "garbage in, garbage out".
@@ -122,23 +135,24 @@ chol: float = Field(..., ge=100, le=600, description="Serum cholesterol")
 ### 3. Training Loop
 To run the training pipeline with full logging and evaluation:
 ```bash
-python scripts/train.py --create-plots --config config/config.yaml
+    # Run from backend/
+    python scripts/train.py --create-plots --config config/config.yaml
 ```
 *   Artifacts are saved to `models/artifacts/`
 *   Metrics are logged to `logs/` and `mlruns/`
 
 ---
 
-## 🔌 API Documentation
+## ðŸ”Œ API Documentation
 
 The REST API is built with **FastAPI** for performance and developer experience.
 
 ### Running the Server
 ```bash
-# Development
+# Development (run from backend/)
 uvicorn src.api.app:app --reload
 
-# Production (4 workers)
+# Production (4 workers, run from backend/)
 uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
@@ -174,14 +188,14 @@ curl -X POST "http://localhost:8000/predict" \
 
 ---
 
-## 🐳 Deployment
+## ðŸ³ Deployment
 
 We prioritize containerization for consistent deployment environments.
 
 ### Docker
 ```bash
 # Build the image
-docker build -t cardiovascular-risk-api:latest .
+docker build -t cardiovascular-risk-api:latest backend
 
 # Run container
 docker run -p 8000:8000 --env-file .env cardiovascular-risk-api:latest
@@ -195,7 +209,7 @@ docker-compose up -d --build
 
 ---
 
-## 🧪 Quality Assurance
+## ðŸ§ª Quality Assurance
 
 We maintain high code quality standards through rigorous testing.
 
@@ -211,7 +225,7 @@ pytest tests/ -v --cov=src --cov-report=html
 
 ---
 
-## 📊 Performance & Metrics
+## ðŸ“Š Performance & Metrics
 
 ### Evaluation Strategy
 Models are evaluated on a hold-out test set (30% split) using:
@@ -226,3 +240,4 @@ Models are evaluated on a hold-out test set (30% split) using:
 *(Note: Train the model locally to reproduce these specific results)*
 
 ---
+

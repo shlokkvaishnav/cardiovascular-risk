@@ -86,8 +86,10 @@ app.add_middleware(
 
 # Global State
 model = None
-MODEL_PATH = Path("models/artifacts/best_model.pkl")
-METADATA_PATH = Path("models/artifacts/training_metadata.json")
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+REPO_ROOT = BACKEND_DIR.parent
+MODEL_PATH = BACKEND_DIR / "models" / "artifacts" / "best_model.pkl"
+METADATA_PATH = BACKEND_DIR / "models" / "artifacts" / "training_metadata.json"
 model_metadata = {
     "loaded": False,
     "version": "unknown",
@@ -393,7 +395,7 @@ async def batch_predict(batch: BatchPredictionRequest):
 
 
 # --- Static Files ---
-static_dir = Path("web/out")
+static_dir = REPO_ROOT / "apps" / "web" / "out"
 if static_dir.exists():
     app.mount("/_next", StaticFiles(directory=static_dir / "_next"), name="next")
     app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
