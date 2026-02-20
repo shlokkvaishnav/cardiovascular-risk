@@ -5,6 +5,25 @@ Centralized location for all Pydantic models
 from pydantic import BaseModel, Field, field_validator, ValidationInfo, model_validator
 from typing import List, Optional, Dict, Any
 from enum import Enum
+from pathlib import Path
+import yaml
+
+def _load_validation_ranges() -> Dict[str, Dict[str, float]]:
+    config_path = Path(__file__).resolve().parents[2] / "config" / "config.yaml"
+    if not config_path.exists():
+        return {}
+    try:
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f) or {}
+        return config.get("validation", {}).get("ranges", {})
+    except Exception:
+        return {}
+
+_RANGES = _load_validation_ranges()
+
+def _rng(name: str, default_min: float, default_max: float) -> Dict[str, float]:
+    values = _RANGES.get(name, {})
+    return {"min": values.get("min", default_min), "max": values.get("max", default_max)}
 
 class RiskLevel(str, Enum):
     """Risk level enumeration"""
@@ -17,19 +36,19 @@ class PredictionRequest(BaseModel):
     Request model for heart disease prediction with medical reality checks.
     Ranges are widened to accept medically possible extreme values while rejecting physical impossibilities.
     """
-    age: float = Field(..., ge=1, le=120, description="Age in years (1-120)")
-    sex: int = Field(..., ge=0, le=1, description="Sex (0: female, 1: male)")
-    cp: float = Field(..., ge=0, le=3, description="Chest pain type (0-3)")
-    trestbps: float = Field(..., ge=50, le=300, description="Resting blood pressure (50-300 mm Hg)")
-    chol: float = Field(..., ge=50, le=800, description="Serum cholesterol (50-800 mg/dl)")
-    fbs: int = Field(..., ge=0, le=1, description="Fasting blood sugar > 120 mg/dl (0: false, 1: true)")
-    restecg: float = Field(..., ge=0, le=2, description="Resting ECG results (0-2)")
-    thalach: float = Field(..., ge=30, le=250, description="Maximum heart rate achieved (30-250)")
-    exang: int = Field(..., ge=0, le=1, description="Exercise induced angina (0: no, 1: yes)")
-    oldpeak: float = Field(..., ge=0.0, le=10.0, description="ST depression (0-10)")
-    slope: float = Field(..., ge=0, le=2, description="Slope of peak exercise ST segment (0-2)")
-    ca: float = Field(..., ge=0, le=4, description="Number of major vessels (0-4)")
-    thal: float = Field(..., ge=0, le=3, description="Thalassemia (0-3)")
+    age: float = Field(..., ge=_rng("age", 1, 120)["min"], le=_rng("age", 1, 120)["max"], description="Age in years")
+    sex: int = Field(..., ge=_rng("sex", 0, 1)["min"], le=_rng("sex", 0, 1)["max"], description="Sex (0: female, 1: male)")
+    cp: float = Field(..., ge=_rng("cp", 0, 3)["min"], le=_rng("cp", 0, 3)["max"], description="Chest pain type")
+    trestbps: float = Field(..., ge=_rng("trestbps", 50, 300)["min"], le=_rng("trestbps", 50, 300)["max"], description="Resting blood pressure (mm Hg)")
+    chol: float = Field(..., ge=_rng("chol", 50, 800)["min"], le=_rng("chol", 50, 800)["max"], description="Serum cholesterol (mg/dl)")
+    fbs: int = Field(..., ge=_rng("fbs", 0, 1)["min"], le=_rng("fbs", 0, 1)["max"], description="Fasting blood sugar > 120 mg/dl (0: false, 1: true)")
+    restecg: float = Field(..., ge=_rng("restecg", 0, 2)["min"], le=_rng("restecg", 0, 2)["max"], description="Resting ECG results")
+    thalach: float = Field(..., ge=_rng("thalach", 30, 250)["min"], le=_rng("thalach", 30, 250)["max"], description="Maximum heart rate achieved")
+    exang: int = Field(..., ge=_rng("exang", 0, 1)["min"], le=_rng("exang", 0, 1)["max"], description="Exercise induced angina (0: no, 1: yes)")
+    oldpeak: float = Field(..., ge=_rng("oldpeak", 0, 10)["min"], le=_rng("oldpeak", 0, 10)["max"], description="ST depression")
+    slope: float = Field(..., ge=_rng("slope", 0, 2)["min"], le=_rng("slope", 0, 2)["max"], description="Slope of peak exercise ST segment")
+    ca: float = Field(..., ge=_rng("ca", 0, 4)["min"], le=_rng("ca", 0, 4)["max"], description="Number of major vessels")
+    thal: float = Field(..., ge=_rng("thal", 0, 3)["min"], le=_rng("thal", 0, 3)["max"], description="Thalassemia")
 
     @model_validator(mode="after")
     def validate_hemodynamic_consistency(self) -> "PredictionRequest":
@@ -94,18 +113,20 @@ class PredictionResponse(BaseModel):
 
 class BatchPredictionRequest(BaseModel):
     """Request model for batch predictions"""
-    instances: List[PredictionRequest] = Field(
-        ..., 
+    instances: List[Dict[str, Any]] = Field(
+        ...,
         min_items=1,
-        max_items=100, 
+        max_items=100,
         description="List of prediction requests (max 100)"
     )
 
 class BatchPredictionResponse(BaseModel):
     """Response model for batch predictions"""
     predictions: List[PredictionResponse]
+    errors: Optional[List[Dict[str, Any]]] = None
     total: int
     timestamp: str
+    request_id: Optional[str] = None
 
 class HealthResponse(BaseModel):
     """Health check response"""
@@ -121,3 +142,4 @@ class ModelInfo(BaseModel):
     loaded_at: Optional[str]
     version: Optional[str]
     features: List[str]
+    training_metadata: Optional[Dict[str, Any]] = None

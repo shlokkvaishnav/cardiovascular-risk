@@ -19,21 +19,29 @@ class DataValidator:
         
     def _define_validation_rules(self) -> Dict[str, Dict]:
         """Define validation rules for each feature"""
+        ranges = self.config.get("validation", {}).get("ranges", {})
+        def rng(name: str, default_min: float, default_max: float) -> Dict[str, float]:
+            values = ranges.get(name, {})
+            return {
+                "min": values.get("min", default_min),
+                "max": values.get("max", default_max)
+            }
+
         return {
-            'age': {'min': 0, 'max': 120, 'type': 'numeric'},
-            'sex': {'min': 0, 'max': 1, 'type': 'categorical'},
-            'cp': {'min': 0, 'max': 3, 'type': 'categorical'},
-            'trestbps': {'min': 80, 'max': 200, 'type': 'numeric'},
-            'chol': {'min': 100, 'max': 600, 'type': 'numeric'},
-            'fbs': {'min': 0, 'max': 1, 'type': 'categorical'},
-            'restecg': {'min': 0, 'max': 2, 'type': 'categorical'},
-            'thalach': {'min': 60, 'max': 220, 'type': 'numeric'},
-            'exang': {'min': 0, 'max': 1, 'type': 'categorical'},
-            'oldpeak': {'min': 0, 'max': 10, 'type': 'numeric'},
-            'slope': {'min': 0, 'max': 2, 'type': 'categorical'},
-            'ca': {'min': 0, 'max': 4, 'type': 'categorical'},
-            'thal': {'min': 0, 'max': 3, 'type': 'categorical'},
-            'target': {'min': 0, 'max': 1, 'type': 'categorical'}
+            'age': {'type': 'numeric', **rng('age', 0, 120)},
+            'sex': {'type': 'categorical', **rng('sex', 0, 1)},
+            'cp': {'type': 'categorical', **rng('cp', 0, 3)},
+            'trestbps': {'type': 'numeric', **rng('trestbps', 80, 200)},
+            'chol': {'type': 'numeric', **rng('chol', 100, 600)},
+            'fbs': {'type': 'categorical', **rng('fbs', 0, 1)},
+            'restecg': {'type': 'categorical', **rng('restecg', 0, 2)},
+            'thalach': {'type': 'numeric', **rng('thalach', 60, 220)},
+            'exang': {'type': 'categorical', **rng('exang', 0, 1)},
+            'oldpeak': {'type': 'numeric', **rng('oldpeak', 0, 10)},
+            'slope': {'type': 'categorical', **rng('slope', 0, 2)},
+            'ca': {'type': 'categorical', **rng('ca', 0, 4)},
+            'thal': {'type': 'categorical', **rng('thal', 0, 3)},
+            'target': {'type': 'categorical', **rng('target', 0, 1)}
         }
     
     def validate_dataframe(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:

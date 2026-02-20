@@ -14,9 +14,8 @@ class FeatureEngineer:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.preprocessor = None
         
-    def prepare_features(self, df: pd.DataFrame) -> Tuple[Any, Any, Any, Any]:
+    def prepare_features(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, Any, Any]:
         """
         Prepare features for training
         Returns: X_train, X_test, y_train, y_test
@@ -38,16 +37,9 @@ class FeatureEngineer:
             stratify=y if y.nunique() > 1 else None
         )
         
-        # Build preprocessor
-        self.preprocessor = self._build_preprocessor()
-        
-        # Fit and transform
-        X_train_processed = self.preprocessor.fit_transform(X_train)
-        X_test_processed = self.preprocessor.transform(X_test)
-        
-        return X_train_processed, X_test_processed, y_train, y_test
+        return X_train, X_test, y_train, y_test
 
-    def _build_preprocessor(self):
+    def build_preprocessor(self):
         """Build column transformer for preprocessing"""
         numeric_features = self.config['preprocessing']['numerical_features']
         categorical_features = self.config['preprocessing']['categorical_features']

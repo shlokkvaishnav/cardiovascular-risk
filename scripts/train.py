@@ -80,17 +80,12 @@ def main(args):
         feature_engineer = FeatureEngineer(config)
         X_train, X_test, y_train, y_test = feature_engineer.prepare_features(df)
         logger.info(f"Training set: {X_train.shape}, Test set: {X_test.shape}")
-        
-        # Save preprocessor
-        preprocessor_path = Path("models/artifacts/preprocessor.pkl")
-        preprocessor_path.parent.mkdir(parents=True, exist_ok=True)
-        joblib.dump(feature_engineer.preprocessor, preprocessor_path)
-        logger.info(f"Preprocessor saved to {preprocessor_path}")
+        preprocessor = feature_engineer.build_preprocessor()
         
         # Train models
         logger.info("\n[4/6] Training models...")
         trainer = ModelTrainer(config)
-        results = trainer.train_all_models(X_train, y_train)
+        results = trainer.train_all_models(X_train, y_train, preprocessor)
         
         logger.info("\nTraining Results:")
         for model_name, score in results.items():
@@ -129,15 +124,23 @@ def main(args):
             logger.info("\n[6/6] Creating visualizations...")
             visualizer = ModelVisualizer(output_dir=Path("logs/visualizations"))
             
-            feature_names = config['preprocessing']['numerical_features'] + \
-                           config['preprocessing']['categorical_features']
+            feature_names = None
+            if hasattr(best_model, "named_steps") and "preprocessor" in best_model.named_steps:
+                feature_names = list(best_model.named_steps["preprocessor"].get_feature_names_out())
             
             # Get feature importances if available
             feature_importances = None
-            if hasattr(best_model, 'feature_importances_'):
-                feature_importances = best_model.feature_importances_
-            elif hasattr(best_model, 'coef_'):
-                feature_importances = abs(best_model.coef_[0])
+            if hasattr(best_model, "named_steps") and "model" in best_model.named_steps:
+                core_model = best_model.named_steps["model"]
+                if hasattr(core_model, 'feature_importances_'):
+                    feature_importances = core_model.feature_importances_
+                elif hasattr(core_model, 'coef_'):
+                    feature_importances = abs(core_model.coef_[0])
+            else:
+                if hasattr(best_model, 'feature_importances_'):
+                    feature_importances = best_model.feature_importances_
+                elif hasattr(best_model, 'coef_'):
+                    feature_importances = abs(best_model.coef_[0])
             
             visualizer.create_evaluation_report(
                 y_test,

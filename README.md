@@ -9,11 +9,11 @@
 [![Coverage](https://img.shields.io/badge/coverage-85%25-green.svg?style=flat)](https://github.com/shlokkvaishnav/cardiovascular-risk)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg?style=flat)](LICENSE)
 
-[Architecture](#-system-architecture) â€¢
-[Features](#-key-features) â€¢
-[Getting Started](#-getting-started) â€¢
-[API](#-api-documentation) â€¢
-[Data Pipeline](#-data-pipeline) â€¢
+[Architecture](#-system-architecture) •
+[Features](#-key-features) •
+[Getting Started](#-getting-started) •
+[API](#-api-documentation) •
+[Data Pipeline](#-data-pipeline) •
 [Deployment](#-deployment)
 
 ---

@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 from sklearn.model_selection import cross_val_score
+from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +44,13 @@ class ModelTrainer:
             
             return model, cv_scores.mean()
 
-    def train_all_models(self, X_train, y_train):
-        """Train standard models"""
+    def train_all_models(self, X_train, y_train, preprocessor):
+        """Train standard models with preprocessing pipeline"""
         from sklearn.linear_model import LogisticRegression
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.svm import SVC
         
-        models = {
+        base_models = {
             "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
             "RandomForest": RandomForestClassifier(
                 random_state=42,
@@ -58,6 +59,11 @@ class ModelTrainer:
                 class_weight='balanced_subsample'
             ),
             "SVM": SVC(probability=True, random_state=42, gamma='scale')
+        }
+        
+        models = {
+            name: Pipeline([("preprocessor", preprocessor), ("model", model)])
+            for name, model in base_models.items()
         }
         
         results = {}

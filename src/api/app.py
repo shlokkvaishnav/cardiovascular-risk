@@ -59,8 +59,15 @@ if not logger.handlers:
 
 # --- Configuration ---
 API_KEY_NAME = "X-API-Key"
-API_KEY = os.getenv("API_KEY", "cardiovascular-risk-secret-key-123")
+APP_ENV = os.getenv("APP_ENV", "development").lower()
+API_KEY = os.getenv("API_KEY")
+if API_KEY is None and APP_ENV in {"development", "dev", "test"}:
+    API_KEY = "dev-api-key"
+    logger.warning("API_KEY is not set; using a default dev key")
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+RATE_LIMIT_RPM = int(os.getenv("RATE_LIMIT_RPM", "120"))
+_rate_limit_buckets: Dict[str, List[float]] = {}
+_reload_lock = asyncio.Lock()
 
 # --- App Initialization ---
 app = FastAPI(
@@ -80,6 +87,7 @@ app.add_middleware(
 # Global State
 model = None
 MODEL_PATH = Path("models/artifacts/best_model.pkl")
+METADATA_PATH = Path("models/artifacts/training_metadata.json")
 model_metadata = {
     "loaded": False,
     "version": "unknown",
@@ -95,10 +103,10 @@ def _risk_level(probability: float) -> str:
     return "High" if probability > 0.7 else "Medium" if probability > 0.4 else "Low"
 
 
-def _model_predict(features: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    predictions = np.asarray(model.predict(features), dtype=int)
-    if hasattr(model, "predict_proba"):
-        probs = np.asarray(model.predict_proba(features), dtype=float)
+def _model_predict(model_ref, features: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    predictions = np.asarray(model_ref.predict(features), dtype=int)
+    if hasattr(model_ref, "predict_proba"):
+        probs = np.asarray(model_ref.predict_proba(features), dtype=float)
         probability = probs[:, 1]
         confidence = probs.max(axis=1)
     else:
@@ -109,21 +117,42 @@ def _model_predict(features: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.nda
 
 def _build_explanations(features: np.ndarray) -> Optional[List[Dict[str, float]]]:
     """Return a lightweight local explanation proxy using linear coefficients when available."""
-    if not hasattr(model, "coef_"):
+    if model is None:
         return None
 
-    coef = np.asarray(getattr(model, "coef_"), dtype=float)
+    core_model = model
+    preprocessor = None
+    feature_names = FEATURE_NAMES
+
+    if hasattr(model, "named_steps"):
+        preprocessor = model.named_steps.get("preprocessor")
+        core_model = model.named_steps.get("model", model)
+        if preprocessor is not None and hasattr(preprocessor, "get_feature_names_out"):
+            feature_names = list(preprocessor.get_feature_names_out())
+
+    if not hasattr(core_model, "coef_"):
+        return None
+
+    coef = np.asarray(getattr(core_model, "coef_"), dtype=float)
     if coef.ndim > 1:
         coef = coef[0]
-    if coef.shape[0] != features.shape[1]:
+
+    transformed = features
+    if preprocessor is not None:
+        try:
+            transformed = preprocessor.transform(features)
+        except Exception:
+            return None
+
+    if coef.shape[0] != transformed.shape[1]:
         return None
 
-    contrib = np.abs(features[0] * coef)
+    contrib = np.abs(transformed[0] * coef)
     if np.allclose(contrib, 0):
         return None
 
     top_indices = np.argsort(contrib)[-3:][::-1]
-    return [{FEATURE_NAMES[idx]: float(contrib[idx])} for idx in top_indices]
+    return [{feature_names[idx]: float(contrib[idx])} for idx in top_indices]
 
 
 @app.exception_handler(RequestValidationError)
@@ -174,7 +203,28 @@ async def add_process_time_and_logging(request: Request, call_next):
 
 # --- Auth ---
 async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if API_KEY is None:
+        if APP_ENV in {"development", "dev", "test"}:
+            logger.warning("API_KEY is not set; authentication disabled in non-production mode")
+            return api_key_header
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="API authentication is not configured",
+        )
+
     if api_key_header == API_KEY:
+        # Basic in-memory rate limiting per API key
+        now = time.time()
+        bucket = _rate_limit_buckets.setdefault(api_key_header, [])
+        window_start = now - 60
+        while bucket and bucket[0] < window_start:
+            bucket.pop(0)
+        if len(bucket) >= RATE_LIMIT_RPM:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded",
+            )
+        bucket.append(now)
         return api_key_header
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -187,10 +237,18 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
 async def load_model():
     global model, model_metadata
     try:
+        if API_KEY is None and APP_ENV not in {"development", "dev", "test"}:
+            raise RuntimeError("API_KEY must be set in non-development environments")
         if MODEL_PATH.exists():
             model = joblib.load(MODEL_PATH)
             model_metadata["loaded"] = True
-            model_metadata["version"] = "1.1.0"
+            if METADATA_PATH.exists():
+                with open(METADATA_PATH, "r") as f:
+                    metadata = json.load(f)
+                model_metadata["version"] = metadata.get("config", {}).get("project", {}).get("version", "unknown")
+                model_metadata["training_metadata"] = metadata
+            else:
+                model_metadata["version"] = "unknown"
             model_metadata["loaded_at"] = datetime.utcnow().isoformat()
             logger.info("ML Model loaded successfully")
         else:
@@ -227,6 +285,7 @@ async def model_info():
         loaded_at=model_metadata.get("loaded_at"),
         version=model_metadata.get("version"),
         features=FEATURE_NAMES,
+        training_metadata=model_metadata.get("training_metadata"),
     )
 
 
@@ -236,20 +295,22 @@ async def model_reload():
     if not MODEL_PATH.exists():
         raise HTTPException(status_code=404, detail="Model file not found")
 
-    model = joblib.load(MODEL_PATH)
-    model_metadata["loaded"] = True
-    model_metadata["loaded_at"] = datetime.utcnow().isoformat()
+    async with _reload_lock:
+        model = joblib.load(MODEL_PATH)
+        model_metadata["loaded"] = True
+        model_metadata["loaded_at"] = datetime.utcnow().isoformat()
     return {"message": "Model reloaded", "metadata": model_metadata}
 
 
 @app.post("/predict", response_model=PredictionResponse, dependencies=[Depends(get_api_key)])
 async def predict(req: PredictionRequest, request: Request):
-    if model is None:
+    model_ref = model
+    if model_ref is None:
         raise HTTPException(status_code=503, detail="Model is not loaded")
 
     try:
         features = _to_feature_vector(req)
-        prediction_arr, probability_arr, confidence_arr = await asyncio.to_thread(_model_predict, features)
+        prediction_arr, probability_arr, confidence_arr = await asyncio.to_thread(_model_predict, model_ref, features)
 
         probability = float(probability_arr[0])
         prediction = int(prediction_arr[0])
@@ -272,15 +333,38 @@ async def predict(req: PredictionRequest, request: Request):
 
 @app.post("/batch-predict", response_model=BatchPredictionResponse, dependencies=[Depends(get_api_key)])
 async def batch_predict(batch: BatchPredictionRequest):
-    if model is None:
+    model_ref = model
+    if model_ref is None:
         raise HTTPException(status_code=503, detail="Model is not loaded")
 
     try:
+        request_id = str(uuid.uuid4())
+        valid_instances: List[PredictionRequest] = []
+        errors: List[Dict[str, Any]] = []
+
+        for idx, instance in enumerate(batch.instances):
+            try:
+                valid_instances.append(PredictionRequest.model_validate(instance))
+            except Exception as exc:
+                errors.append({
+                    "index": idx,
+                    "error": str(exc)
+                })
+
+        if not valid_instances:
+            return BatchPredictionResponse(
+                predictions=[],
+                errors=errors or [{"error": "No valid instances"}],
+                total=0,
+                timestamp=datetime.utcnow().isoformat(),
+                request_id=request_id,
+            )
+
         matrix = np.array(
-            [[getattr(instance, feature) for feature in FEATURE_NAMES] for instance in batch.instances],
+            [[getattr(instance, feature) for feature in FEATURE_NAMES] for instance in valid_instances],
             dtype=np.float64,
         )
-        predictions, probabilities, confidences = await asyncio.to_thread(_model_predict, matrix)
+        predictions, probabilities, confidences = await asyncio.to_thread(_model_predict, model_ref, matrix)
 
         now = datetime.utcnow().isoformat()
         results = [
@@ -290,16 +374,18 @@ async def batch_predict(batch: BatchPredictionRequest):
                 risk_level=_risk_level(float(probabilities[idx])),
                 confidence=float(confidences[idx]),
                 timestamp=now,
-                request_id="batch",
+                request_id=request_id,
                 top_contributors=None,
             )
-            for idx in range(len(batch.instances))
+            for idx in range(len(valid_instances))
         ]
 
         return BatchPredictionResponse(
             predictions=results,
+            errors=errors if errors else None,
             total=len(results),
             timestamp=now,
+            request_id=request_id,
         )
     except Exception as e:
         logger.error(f"Batch prediction failed: {str(e)}", exc_info=True)
