@@ -104,3 +104,7 @@ dmypy.json
 
 # Cython
 cython_debug/
+
+# Web app shared utilities (overrides generic Python lib/ ignore)
+!apps/web/app/lib/
+!apps/web/app/lib/*.ts
