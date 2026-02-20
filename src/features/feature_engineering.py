@@ -1,7 +1,7 @@
 from typing import Tuple, Dict, Any
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder, RobustScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
@@ -31,7 +31,11 @@ class FeatureEngineer:
         # Split data
         test_size = self.config['data']['test_size']
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=self.config['project']['random_seed']
+            X,
+            y,
+            test_size=test_size,
+            random_state=self.config['project']['random_seed'],
+            stratify=y if y.nunique() > 1 else None
         )
         
         # Build preprocessor
@@ -55,13 +59,16 @@ class FeatureEngineer:
 
         categorical_transformer = Pipeline(steps=[
             ('imputer', SimpleImputer(strategy=self.config['preprocessing']['imputation_strategy']['categorical'])),
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+            ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
         ])
 
         preprocessor = ColumnTransformer(
             transformers=[
                 ('num', numeric_transformer, numeric_features),
                 ('cat', categorical_transformer, categorical_features)
-            ])
+            ],
+            remainder='drop',
+            n_jobs=self.config['training'].get('n_jobs', None)
+        )
             
         return preprocessor

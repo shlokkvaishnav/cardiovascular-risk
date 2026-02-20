@@ -51,8 +51,13 @@ class ModelTrainer:
         
         models = {
             "LogisticRegression": LogisticRegression(max_iter=1000, random_state=42),
-            "RandomForest": RandomForestClassifier(random_state=42),
-            "SVM": SVC(probability=True, random_state=42)
+            "RandomForest": RandomForestClassifier(
+                random_state=42,
+                n_estimators=300,
+                n_jobs=self.config['training'].get('n_jobs', -1),
+                class_weight='balanced_subsample'
+            ),
+            "SVM": SVC(probability=True, random_state=42, gamma='scale')
         }
         
         results = {}
