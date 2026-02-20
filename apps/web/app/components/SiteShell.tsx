@@ -1,19 +1,20 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 export function SiteHeader() {
   return (
-    <header className="container">
-      <nav className="nav">
-        <Link href="/" className="badge">
-          CardioRisk
+    <header className="header-wrap">
+      <nav className="container nav">
+        <Link href="/" className="brand" aria-label="CardioRisk Home">
+          <span className="brand-mark">CR</span>
+          <span>CardioRisk</span>
         </Link>
-        <div className="nav-links">
+        <div className="nav-links" aria-label="Primary Navigation">
           <Link href="/assess">Assess</Link>
           <Link href="/results">Results</Link>
           <Link href="/about">Methodology</Link>
           <Link href="/privacy">Privacy</Link>
         </div>
-        <Link href="/assess" className="button-primary">
+        <Link href="/assess" className="btn btn-primary nav-cta">
           Start Assessment
         </Link>
       </nav>
@@ -23,15 +24,16 @@ export function SiteHeader() {
 
 export function SiteFooter() {
   return (
-    <footer className="footer">
+    <footer className="footer section">
       <div className="container">
-        <div className="card" style={{ padding: "20px 24px", marginBottom: 24 }}>
+        <div className="card-panel" style={{ marginBottom: 20 }}>
           <strong>Clinical note:</strong> This tool supports decision-making and does not replace physician judgment.
         </div>
-        <div>
+        <div className="footer-copy">
           CardioRisk Platform. Evidence-based estimates with transparent inputs. No data stored by default.
         </div>
       </div>
     </footer>
   );
 }
+
