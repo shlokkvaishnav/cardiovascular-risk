@@ -13,7 +13,7 @@ import {
   Timer,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { appendAssessmentHistory } from "../hooks/useAssessmentHistory";
 import {
@@ -144,7 +144,7 @@ function SmokingCards(props: {
   value: SmokingStatus | null;
   onChange: (value: SmokingStatus) => void;
 }) {
-  const cards: Array<{ value: SmokingStatus; title: string; desc: string; icon: JSX.Element }> = [
+  const cards: Array<{ value: SmokingStatus; title: string; desc: string; icon: ReactNode }> = [
     { value: "never", title: "Never", desc: "No smoking history", icon: <Ban size={16} /> },
     { value: "former", title: "Former", desc: "Stopped smoking", icon: <Cigarette size={16} /> },
     { value: "current", title: "Current", desc: "Current smoking exposure", icon: <Cigarette size={16} /> },
