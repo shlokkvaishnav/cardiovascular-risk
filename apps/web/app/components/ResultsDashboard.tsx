@@ -169,9 +169,24 @@ export function ResultsDashboard() {
             <AlertTriangle size={16} />
             <span>Decision-support only. Clinical judgment remains essential.</span>
           </div>
-          <Link href="/assess" className="btn btn-subtle">
-            Re-run Assessment
-          </Link>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+            <Link href="/assess" className="btn btn-subtle">
+              Re-run Assessment
+            </Link>
+            <button
+              type="button"
+              className="btn btn-subtle"
+              onClick={() => {
+                const text = `CardioRisk Assessment\nRisk Level: ${result.category.toUpperCase()}\n10-Year Score: ${result.score.toFixed(
+                  1,
+                )}%\n\nDriven by: ${result.drivers.map((d) => d.label).join(", ") || "None found"}`;
+                navigator.clipboard.writeText(text);
+                alert("Results copied to clipboard!");
+              }}
+            >
+              Share Results
+            </button>
+          </div>
         </motion.div>
       </div>
     </section>

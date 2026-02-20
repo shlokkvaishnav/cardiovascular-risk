@@ -16,6 +16,24 @@
   --border: #e7e8eb;
   --ring: rgba(192, 57, 43, 0.2);
   --shadow: 0 14px 40px rgba(26, 26, 46, 0.1);
+  --shadow-strong: 0 20px 40px rgba(0, 0, 0, 0.12);
+}
+
+.dark {
+  color-scheme: dark;
+  --primary: #e74c3c;
+  --primary-strong: #ff6b6b;
+  --accent: #eef1f4;
+  --bg: #0f1115;
+  --surface: #181a20;
+  --success: #2ecc71;
+  --warning: #f1c40f;
+  --danger: #ff5252;
+  --muted: #94a3b8;
+  --border: #2a2d35;
+  --ring: rgba(231, 76, 60, 0.25);
+  --shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
+  --shadow-strong: 0 20px 50px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -32,9 +50,16 @@ body {
   font-family: var(--font-inter), "Segoe UI", sans-serif;
   color: var(--accent);
   background:
-    radial-gradient(circle at 8% 15%, rgba(192, 57, 43, 0.1), transparent 35%),
-    radial-gradient(circle at 88% 2%, rgba(26, 26, 46, 0.14), transparent 28%),
-    linear-gradient(180deg, #fbf6f6 0%, #f6f8fb 45%, #f8f9fa 100%);
+    radial-gradient(circle at 8% 15%, rgba(192, 57, 43, 0.08), transparent 35%),
+    radial-gradient(circle at 88% 2%, rgba(26, 26, 46, 0.05), transparent 28%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
+}
+
+.dark body {
+  background:
+    radial-gradient(circle at 15% 15%, rgba(231, 76, 60, 0.08), transparent 40%),
+    radial-gradient(circle at 85% 5%, rgba(41, 128, 185, 0.08), transparent 35%),
+    linear-gradient(180deg, #0f1115 0%, #0f1115 100%);
 }
 
 a {
@@ -101,21 +126,32 @@ main {
 }
 
 .card-panel {
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--surface);
   border-radius: 20px;
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   padding: 32px;
-  backdrop-filter: blur(8px);
+  /* backdrop-filter: blur(8px); removed for consistent opaque surface in dark mode or handled via alpha var if needed */
+}
+
+.dark .card-panel {
+  background: rgba(24, 26, 32, 0.6);
+  backdrop-filter: blur(12px);
+  border-color: rgba(255, 255, 255, 0.06);
 }
 
 .header-wrap {
   position: sticky;
   top: 0;
   z-index: 60;
-  border-bottom: 1px solid rgba(26, 26, 46, 0.06);
+  border-bottom: 1px solid var(--border);
   background: rgba(248, 249, 250, 0.84);
   backdrop-filter: blur(10px);
+}
+
+.dark .header-wrap {
+  background: rgba(15, 17, 21, 0.84);
+  border-bottom: 1px solid #2a2d35;
 }
 
 .nav {
@@ -150,8 +186,12 @@ main {
   display: flex;
   align-items: center;
   gap: 20px;
-  color: #3f4450;
+  color: var(--muted);
   font-weight: 550;
+}
+
+.nav-links a:hover {
+  color: var(--accent);
 }
 
 .btn {
@@ -216,7 +256,7 @@ main {
   align-items: center;
   font-size: 13px;
   font-weight: 550;
-  color: #3f4450;
+  color: var(--muted);
 }
 
 .hero-panel {
@@ -398,7 +438,7 @@ main {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 700;
-  color: #4e5561;
+  color: var(--muted);
 }
 
 .field-range {
@@ -415,7 +455,8 @@ main {
   min-height: 52px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--surface);
+  color: var(--accent);
   font-size: 16px;
   padding: 22px 48px 8px 14px;
 }
@@ -427,8 +468,9 @@ main {
 }
 
 .floating.disabled .floating-input {
-  background: #f3f5f7;
-  color: #8a929f;
+  background: var(--bg);
+  color: var(--muted);
+  opacity: 0.7;
 }
 
 .floating-text {
@@ -479,9 +521,9 @@ main {
 }
 
 .chip {
-  border: 1px solid rgba(26, 26, 46, 0.14);
-  background: #fff;
-  color: #2f3440;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
   border-radius: 999px;
   min-height: 36px;
   padding: 0 12px;
@@ -521,13 +563,14 @@ main {
 
 .option-card {
   text-align: left;
-  border: 1px solid rgba(26, 26, 46, 0.12);
+  border: 1px solid var(--border);
   border-radius: 13px;
-  background: #fff;
+  background: var(--surface);
   min-height: 64px;
   padding: 12px;
   display: grid;
   gap: 3px;
+  color: var(--accent);
 }
 
 .option-card.active {
@@ -550,13 +593,13 @@ main {
 }
 
 .review-row {
-  border: 1px solid rgba(26, 26, 46, 0.11);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 10px 12px;
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--surface);
 }
 
 .analysis-card {
@@ -565,8 +608,8 @@ main {
   gap: 10px;
   padding: 14px;
   border-radius: 12px;
-  border: 1px solid rgba(26, 26, 46, 0.12);
-  background: rgba(26, 26, 46, 0.05);
+  border: 1px solid var(--border);
+  background: var(--bg);
 }
 
 .error-box {
@@ -618,21 +661,21 @@ main {
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: conic-gradient(#e8ebee, #e8ebee);
+  background: conic-gradient(var(--border), var(--border));
 }
 
 .gauge-core {
   width: 146px;
   height: 146px;
   border-radius: 50%;
-  border: 1px solid rgba(26, 26, 46, 0.1);
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--surface);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-direction: column;
   gap: 3px;
-  color: #616979;
+  color: var(--muted);
   font-size: 12px;
 }
 
