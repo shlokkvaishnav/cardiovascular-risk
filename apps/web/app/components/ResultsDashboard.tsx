@@ -541,7 +541,7 @@ export function ResultsDashboard() {
           {activeTab === "simulate" && assessmentData && (
             <RiskSimulator baselineData={assessmentData} baselineResult={result} onResultChange={setSimulatedResult} />
           )}
-          {heartAge !== null && assessmentData?.age !== null ? (
+          {heartAge !== null && assessmentData && assessmentData.age !== null ? (
             <div style={{ marginTop: 20 }}>
               <HeartAge heartAge={heartAge} age={assessmentData.age} />
             </div>
