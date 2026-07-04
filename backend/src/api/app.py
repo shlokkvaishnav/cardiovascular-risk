@@ -41,8 +41,18 @@ from prometheus_client import Counter, Histogram
 # from the client-facing height/weight fields in PredictionRequest -- see
 # _to_feature_vector -- rather than accepted directly from the client.
 FEATURE_NAMES: List[str] = [
-    "age", "sex", "height", "weight", "bmi", "ap_hi", "ap_lo",
-    "cholesterol", "gluc", "smoke", "alco", "active"
+    "age",
+    "sex",
+    "height",
+    "weight",
+    "bmi",
+    "ap_hi",
+    "ap_lo",
+    "cholesterol",
+    "gluc",
+    "smoke",
+    "alco",
+    "active",
 ]
 
 
@@ -108,10 +118,14 @@ app.include_router(document_extraction_router_module.router)
 # /metrics, plus custom ML-specific metrics below: prediction volume by risk
 # level and a distribution of predicted probabilities, both cheap proxies for
 # spotting model/data drift over time without a full drift-detection service.
-Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+Instrumentator().instrument(app).expose(
+    app, endpoint="/metrics", include_in_schema=False
+)
 
 PREDICTIONS_BY_RISK_LEVEL = Counter(
-    "cardio_predictions_total", "Total predictions served, by risk level", ["risk_level"]
+    "cardio_predictions_total",
+    "Total predictions served, by risk level",
+    ["risk_level"],
 )
 PREDICTED_PROBABILITY = Histogram(
     "cardio_predicted_probability",
@@ -146,14 +160,18 @@ def _to_feature_vector(req: PredictionRequest) -> pd.DataFrame:
     """
     values: Dict[str, float] = req.model_dump()
     values["bmi"] = req.weight / ((req.height / 100) ** 2)
-    return pd.DataFrame([[values[feature] for feature in FEATURE_NAMES]], columns=FEATURE_NAMES)
+    return pd.DataFrame(
+        [[values[feature] for feature in FEATURE_NAMES]], columns=FEATURE_NAMES
+    )
 
 
 def _risk_level(probability: float) -> str:
     return "High" if probability > 0.7 else "Medium" if probability > 0.4 else "Low"
 
 
-def _model_predict(model_ref, features: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _model_predict(
+    model_ref, features: pd.DataFrame
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     predictions = np.asarray(model_ref.predict(features), dtype=int)
     if hasattr(model_ref, "predict_proba"):
         probs = np.asarray(model_ref.predict_proba(features), dtype=float)
@@ -186,10 +204,14 @@ def _load_explainer(model_ref) -> Optional[SHAPExplainer]:
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     details = []
     for err in exc.errors():
-        details.append({
-            "field": ".".join([str(loc) for loc in err.get("loc", []) if loc != "body"]),
-            "message": err.get("msg"),
-        })
+        details.append(
+            {
+                "field": ".".join(
+                    [str(loc) for loc in err.get("loc", []) if loc != "body"]
+                ),
+                "message": err.get("msg"),
+            }
+        )
     return JSONResponse(
         status_code=422,
         content={
@@ -222,7 +244,9 @@ async def add_process_time_and_logging(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time"] = f"{process_time:.6f}"
 
-    logger.info(f"Request: {request.method} {request.url.path} Status: {response.status_code} Duration: {process_time:.4f}s")
+    logger.info(
+        f"Request: {request.method} {request.url.path} Status: {response.status_code} Duration: {process_time:.4f}s"
+    )
 
     logging.setLogRecordFactory(old_factory)
     return response
@@ -232,7 +256,9 @@ async def add_process_time_and_logging(request: Request, call_next):
 async def get_api_key(api_key_header: str = Security(api_key_header)):
     if API_KEY is None:
         if APP_ENV in {"development", "dev", "test"}:
-            logger.warning("API_KEY is not set; authentication disabled in non-production mode")
+            logger.warning(
+                "API_KEY is not set; authentication disabled in non-production mode"
+            )
             return api_key_header
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -262,7 +288,9 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
 # --- Events ---
 @app.on_event("startup")
 async def load_model():
-    global model, explainer, model_metadata
+    # model_metadata is a module-level dict mutated in place (item
+    # assignment) here, never rebound -- no `global` needed for that.
+    global model, explainer
     try:
         if API_KEY is None and APP_ENV not in {"development", "dev", "test"}:
             raise RuntimeError("API_KEY must be set in non-development environments")
@@ -272,7 +300,11 @@ async def load_model():
             if METADATA_PATH.exists():
                 with open(METADATA_PATH, "r") as f:
                     metadata = json.load(f)
-                model_metadata["version"] = metadata.get("config", {}).get("project", {}).get("version", "unknown")
+                model_metadata["version"] = (
+                    metadata.get("config", {})
+                    .get("project", {})
+                    .get("version", "unknown")
+                )
                 model_metadata["training_metadata"] = metadata
             else:
                 model_metadata["version"] = "unknown"
@@ -283,9 +315,13 @@ async def load_model():
             if explainer is not None:
                 logger.info("SHAP explainer ready")
             else:
-                logger.warning("SHAP explainer unavailable; predictions will omit top_contributors")
+                logger.warning(
+                    "SHAP explainer unavailable; predictions will omit top_contributors"
+                )
         else:
-            logger.warning(f"Model file not found at {MODEL_PATH}. API starting in skeletal mode.")
+            logger.warning(
+                f"Model file not found at {MODEL_PATH}. API starting in skeletal mode."
+            )
     except Exception as e:
         logger.error(f"Failed to load model: {str(e)}")
 
@@ -304,7 +340,9 @@ async def init_optional_db():
         db_models.Base.metadata.create_all(bind=engine)
         logger.info("Accounts/report-history database ready")
     except Exception as e:
-        logger.warning(f"Accounts/report-history database unavailable ({e}); /auth and /reports will fail until it is")
+        logger.warning(
+            f"Accounts/report-history database unavailable ({e}); /auth and /reports will fail until it is"
+        )
 
 
 # --- Endpoints ---
@@ -313,7 +351,13 @@ async def root():
     return {
         "message": "Cardiovascular Risk Prediction API",
         "version": app.version,
-        "endpoints": ["/health", "/predict", "/batch-predict", "/model/info", "/model/reload"],
+        "endpoints": [
+            "/health",
+            "/predict",
+            "/batch-predict",
+            "/model/info",
+            "/model/reload",
+        ],
     }
 
 
@@ -353,7 +397,9 @@ async def model_reload():
     return {"message": "Model reloaded", "metadata": model_metadata}
 
 
-@app.post("/predict", response_model=PredictionResponse, dependencies=[Depends(get_api_key)])
+@app.post(
+    "/predict", response_model=PredictionResponse, dependencies=[Depends(get_api_key)]
+)
 async def predict(req: PredictionRequest, request: Request):
     model_ref = model
     if model_ref is None:
@@ -361,7 +407,9 @@ async def predict(req: PredictionRequest, request: Request):
 
     try:
         features = _to_feature_vector(req)
-        prediction_arr, probability_arr, confidence_arr = await asyncio.to_thread(_model_predict, model_ref, features)
+        prediction_arr, probability_arr, confidence_arr = await asyncio.to_thread(
+            _model_predict, model_ref, features
+        )
 
         probability = float(probability_arr[0])
         prediction = int(prediction_arr[0])
@@ -370,7 +418,9 @@ async def predict(req: PredictionRequest, request: Request):
         top_contributors: Optional[List[Dict[str, float]]] = None
         baseline_probability: Optional[float] = None
         if explainer is not None:
-            top_contributors, baseline_probability = await asyncio.to_thread(explainer.explain, features)
+            top_contributors, baseline_probability = await asyncio.to_thread(
+                explainer.explain, features
+            )
 
         risk_level = _risk_level(probability)
         PREDICTIONS_BY_RISK_LEVEL.labels(risk_level=risk_level).inc()
@@ -392,7 +442,11 @@ async def predict(req: PredictionRequest, request: Request):
         raise HTTPException(status_code=500, detail="Internal prediction error")
 
 
-@app.post("/batch-predict", response_model=BatchPredictionResponse, dependencies=[Depends(get_api_key)])
+@app.post(
+    "/batch-predict",
+    response_model=BatchPredictionResponse,
+    dependencies=[Depends(get_api_key)],
+)
 async def batch_predict(batch: BatchPredictionRequest):
     model_ref = model
     if model_ref is None:
@@ -407,10 +461,7 @@ async def batch_predict(batch: BatchPredictionRequest):
             try:
                 valid_instances.append(PredictionRequest.model_validate(instance))
             except Exception as exc:
-                errors.append({
-                    "index": idx,
-                    "error": str(exc)
-                })
+                errors.append({"index": idx, "error": str(exc)})
 
         if not valid_instances:
             return BatchPredictionResponse(
@@ -421,8 +472,13 @@ async def batch_predict(batch: BatchPredictionRequest):
                 request_id=request_id,
             )
 
-        matrix = pd.concat([_to_feature_vector(instance) for instance in valid_instances], ignore_index=True)
-        predictions, probabilities, confidences = await asyncio.to_thread(_model_predict, model_ref, matrix)
+        matrix = pd.concat(
+            [_to_feature_vector(instance) for instance in valid_instances],
+            ignore_index=True,
+        )
+        predictions, probabilities, confidences = await asyncio.to_thread(
+            _model_predict, model_ref, matrix
+        )
 
         # Per-row SHAP explanations are intentionally skipped for batch requests:
         # TreeExplainer/LinearExplainer are cheap, but the KernelExplainer fallback
@@ -436,16 +492,18 @@ async def batch_predict(batch: BatchPredictionRequest):
             risk_level = _risk_level(probability)
             PREDICTIONS_BY_RISK_LEVEL.labels(risk_level=risk_level).inc()
             PREDICTED_PROBABILITY.observe(probability)
-            results.append(PredictionResponse(
-                prediction=int(predictions[idx]),
-                probability=probability,
-                risk_level=risk_level,
-                confidence=float(confidences[idx]),
-                timestamp=now,
-                request_id=request_id,
-                top_contributors=None,
-                baseline_probability=None,
-            ))
+            results.append(
+                PredictionResponse(
+                    prediction=int(predictions[idx]),
+                    probability=probability,
+                    risk_level=risk_level,
+                    confidence=float(confidences[idx]),
+                    timestamp=now,
+                    request_id=request_id,
+                    top_contributors=None,
+                    baseline_probability=None,
+                )
+            )
 
         return BatchPredictionResponse(
             predictions=results,

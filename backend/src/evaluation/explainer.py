@@ -12,6 +12,7 @@ proper SHAP explainer selected by model type:
 Contributions are signed (positive = increases predicted risk, negative =
 protective), unlike the old implementation which only reported magnitude.
 """
+
 from __future__ import annotations
 
 import logging
@@ -46,7 +47,9 @@ class SHAPExplainer:
         self.explainer = self._build_explainer(shap, background_transformed)
 
     def _resolve_transformed_feature_names(self) -> List[str]:
-        if self.preprocessor is not None and hasattr(self.preprocessor, "get_feature_names_out"):
+        if self.preprocessor is not None and hasattr(
+            self.preprocessor, "get_feature_names_out"
+        ):
             try:
                 return list(self.preprocessor.get_feature_names_out())
             except Exception:  # pragma: no cover - defensive
@@ -58,8 +61,12 @@ class SHAPExplainer:
             return self.preprocessor.transform(features)
         return features
 
-    def _build_explainer(self, shap_module: Any, background_transformed: np.ndarray) -> Any:
-        if hasattr(self.core_model, "estimators_") and hasattr(self.core_model, "predict_proba"):
+    def _build_explainer(
+        self, shap_module: Any, background_transformed: np.ndarray
+    ) -> Any:
+        if hasattr(self.core_model, "estimators_") and hasattr(
+            self.core_model, "predict_proba"
+        ):
             # Tree ensemble, e.g. RandomForestClassifier
             return shap_module.TreeExplainer(self.core_model)
 
@@ -74,7 +81,11 @@ class SHAPExplainer:
         self._is_kernel = True
         n_background = background_transformed.shape[0]
         k = min(10, n_background)
-        summary = shap_module.kmeans(background_transformed, k) if k > 1 else background_transformed
+        summary = (
+            shap_module.kmeans(background_transformed, k)
+            if k > 1
+            else background_transformed
+        )
         predict_fn = getattr(self.core_model, "predict_proba", self.core_model.predict)
         return shap_module.KernelExplainer(predict_fn, summary)
 
@@ -103,7 +114,9 @@ class SHAPExplainer:
             # within interactive latency (its default 'auto' can take tens of
             # seconds). Tree/Linear explainers ignore this kwarg.
             if getattr(self, "_is_kernel", False):
-                shap_values = self.explainer.shap_values(transformed, nsamples=128, silent=True)
+                shap_values = self.explainer.shap_values(
+                    transformed, nsamples=128, silent=True
+                )
             else:
                 shap_values = self.explainer.shap_values(transformed)
             row = self._positive_class_row(shap_values)
@@ -116,7 +129,9 @@ class SHAPExplainer:
             contributions = [{names[i]: float(row[i])} for i in order]
             return contributions, self._baseline_probability()
         except Exception as exc:
-            logger.warning("SHAP explanation failed, omitting top_contributors: %s", exc)
+            logger.warning(
+                "SHAP explanation failed, omitting top_contributors: %s", exc
+            )
             return None, None
 
     @staticmethod

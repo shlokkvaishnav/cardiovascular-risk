@@ -8,6 +8,7 @@ The prediction is always recomputed server-side from the submitted inputs
 than trusting a client-submitted probability/SHAP payload, so a report's
 stored result can't be spoofed by a malicious or buggy client.
 """
+
 import io
 from datetime import datetime
 from typing import List, Optional
@@ -49,7 +50,14 @@ def _run_prediction(inputs: PredictionRequest):
     """Deferred import avoids a circular import at module load time: app.py
     imports this router, so `model`/`explainer` can only be resolved once
     app.py has finished initializing, i.e. at request time, not import time."""
-    from .app import FEATURE_NAMES, _to_feature_vector, _model_predict, _risk_level, model, explainer  # noqa: F401
+    from .app import (
+        FEATURE_NAMES,
+        _to_feature_vector,
+        _model_predict,
+        _risk_level,
+        model,
+        explainer,
+    )  # noqa: F401
 
     if model is None:
         raise HTTPException(status_code=503, detail="Model is not loaded")
@@ -63,7 +71,13 @@ def _run_prediction(inputs: PredictionRequest):
     if explainer is not None:
         top_contributors, baseline_probability = explainer.explain(features)
 
-    return prediction, probability, _risk_level(probability), top_contributors, baseline_probability
+    return (
+        prediction,
+        probability,
+        _risk_level(probability),
+        top_contributors,
+        baseline_probability,
+    )
 
 
 @router.post("", response_model=ReportDetail, status_code=status.HTTP_201_CREATED)
@@ -72,7 +86,9 @@ def save_report(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    prediction, probability, risk_level, top_contributors, baseline_probability = _run_prediction(req.inputs)
+    prediction, probability, risk_level, top_contributors, baseline_probability = (
+        _run_prediction(req.inputs)
+    )
 
     report = Report(
         user_id=current_user.id,
@@ -116,7 +132,11 @@ def list_reports(
     )
     return [
         ReportSummary(
-            id=r.id, risk_level=r.risk_level, probability=r.probability, created_at=r.created_at, note=r.note
+            id=r.id,
+            risk_level=r.risk_level,
+            probability=r.probability,
+            created_at=r.created_at,
+            note=r.note,
         )
         for r in reports
     ]
@@ -125,22 +145,38 @@ def list_reports(
 def _get_owned_report(report_id: str, current_user: User, db: Session) -> Report:
     report = db.get(Report, report_id)
     if report is None or report.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Report not found"
+        )
     return report
 
 
 @router.get("/{report_id}", response_model=ReportDetail)
-def get_report(report_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_report(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     r = _get_owned_report(report_id, current_user, db)
     return ReportDetail(
-        id=r.id, risk_level=r.risk_level, probability=r.probability, created_at=r.created_at, note=r.note,
-        inputs=r.inputs, prediction=r.prediction, top_contributors=r.top_contributors,
+        id=r.id,
+        risk_level=r.risk_level,
+        probability=r.probability,
+        created_at=r.created_at,
+        note=r.note,
+        inputs=r.inputs,
+        prediction=r.prediction,
+        top_contributors=r.top_contributors,
         baseline_probability=r.baseline_probability,
     )
 
 
 @router.get("/{report_id}/pdf")
-def get_report_pdf(report_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_report_pdf(
+    report_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     from .pdf_report import build_report_pdf  # deferred: reportlab is only needed here
 
     r = _get_owned_report(report_id, current_user, db)
@@ -148,5 +184,7 @@ def get_report_pdf(report_id: str, current_user: User = Depends(get_current_user
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=cardio-report-{r.id}.pdf"},
+        headers={
+            "Content-Disposition": f"attachment; filename=cardio-report-{r.id}.pdf"
+        },
     )

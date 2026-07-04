@@ -4,6 +4,7 @@ Layout style loosely follows the project's earlier prototype (clinical
 summary + factor table + explanation section), rebuilt for the current
 11-feature lifestyle schema.
 """
+
 from io import BytesIO
 
 from reportlab.lib import colors
@@ -11,7 +12,14 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import HRFlowable, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    HRFlowable,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 FEATURE_LABELS = {
     "age": "Age (years)",
@@ -41,21 +49,35 @@ def build_report_pdf(report) -> bytes:
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.8 * cm, bottomMargin=1.8 * cm)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("Title2", parent=styles["Title"], alignment=TA_CENTER, textColor=colors.HexColor("#922B21"))
+    title_style = ParagraphStyle(
+        "Title2",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        textColor=colors.HexColor("#922B21"),
+    )
     story = []
 
     story.append(Paragraph("CardioRisk Assessment Report", title_style))
     story.append(Spacer(1, 6))
-    story.append(Paragraph(f"Generated: {report.created_at.strftime('%Y-%m-%d %H:%M UTC')}", styles["Normal"]))
+    story.append(
+        Paragraph(
+            f"Generated: {report.created_at.strftime('%Y-%m-%d %H:%M UTC')}",
+            styles["Normal"],
+        )
+    )
     story.append(HRFlowable(width="100%", color=colors.HexColor("#d1d5db")))
     story.append(Spacer(1, 12))
 
-    risk_color_name = {"Low": "green", "Medium": "orange", "High": "red"}.get(report.risk_level, "black")
-    story.append(Paragraph(
-        f"<font color='{risk_color_name}'><b>{report.risk_level.upper()} RISK</b></font> "
-        f"-- predicted probability {report.probability * 100:.1f}%",
-        styles["Heading2"],
-    ))
+    risk_color_name = {"Low": "green", "Medium": "orange", "High": "red"}.get(
+        report.risk_level, "black"
+    )
+    story.append(
+        Paragraph(
+            f"<font color='{risk_color_name}'><b>{report.risk_level.upper()} RISK</b></font> "
+            f"-- predicted probability {report.probability * 100:.1f}%",
+            styles["Heading2"],
+        )
+    )
     story.append(Spacer(1, 12))
 
     story.append(Paragraph("Submitted Inputs", styles["Heading3"]))
@@ -63,11 +85,15 @@ def build_report_pdf(report) -> bytes:
         [FEATURE_LABELS.get(k, k), str(v)] for k, v in report.inputs.items()
     ]
     input_table = Table(input_rows, colWidths=[8 * cm, 6 * cm])
-    input_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-    ]))
+    input_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ]
+        )
+    )
     story.append(input_table)
     story.append(Spacer(1, 12))
 
@@ -79,11 +105,15 @@ def build_report_pdf(report) -> bytes:
             for k, v in entry.items()
         ]
         contributor_table = Table(contributor_rows, colWidths=[8 * cm, 6 * cm])
-        contributor_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ]))
+        contributor_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e5e7eb")),
+                    ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ]
+            )
+        )
         story.append(contributor_table)
         story.append(Spacer(1, 12))
 
@@ -94,11 +124,15 @@ def build_report_pdf(report) -> bytes:
 
     story.append(HRFlowable(width="100%", color=colors.HexColor("#d1d5db")))
     story.append(Spacer(1, 8))
-    story.append(Paragraph(
-        "This report is educational decision-support and does not replace professional "
-        "medical diagnosis or treatment.",
-        ParagraphStyle("Disclaimer", parent=styles["Normal"], fontSize=8, textColor=colors.grey),
-    ))
+    story.append(
+        Paragraph(
+            "This report is educational decision-support and does not replace professional "
+            "medical diagnosis or treatment.",
+            ParagraphStyle(
+                "Disclaimer", parent=styles["Normal"], fontSize=8, textColor=colors.grey
+            ),
+        )
+    )
 
     doc.build(story)
     return buf.getvalue()

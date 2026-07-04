@@ -9,7 +9,14 @@ def config():
     return {
         "preprocessing": {
             "numerical_features": ["age", "height", "weight", "bmi", "ap_hi", "ap_lo"],
-            "categorical_features": ["sex", "cholesterol", "gluc", "smoke", "alco", "active"],
+            "categorical_features": [
+                "sex",
+                "cholesterol",
+                "gluc",
+                "smoke",
+                "alco",
+                "active",
+            ],
         },
         "validation": {
             "ranges": {
@@ -35,21 +42,23 @@ def config():
 def valid_df():
     # Every column has >1 unique value: the validator's statistical checks
     # flag constant columns as a real data-quality issue (correctly).
-    return pd.DataFrame({
-        "age": [45, 58, 62, 33],
-        "sex": [0, 1, 1, 0],
-        "height": [165, 175, 180, 160],
-        "weight": [60.0, 85.0, 78.0, 55.0],
-        "bmi": [22.0, 27.8, 24.1, 21.5],
-        "ap_hi": [110, 145, 130, 118],
-        "ap_lo": [70, 90, 85, 75],
-        "cholesterol": [1, 2, 1, 3],
-        "gluc": [1, 1, 2, 1],
-        "smoke": [0, 0, 1, 0],
-        "alco": [0, 0, 0, 1],
-        "active": [1, 1, 0, 1],
-        "target": [0, 1, 0, 0],
-    })
+    return pd.DataFrame(
+        {
+            "age": [45, 58, 62, 33],
+            "sex": [0, 1, 1, 0],
+            "height": [165, 175, 180, 160],
+            "weight": [60.0, 85.0, 78.0, 55.0],
+            "bmi": [22.0, 27.8, 24.1, 21.5],
+            "ap_hi": [110, 145, 130, 118],
+            "ap_lo": [70, 90, 85, 75],
+            "cholesterol": [1, 2, 1, 3],
+            "gluc": [1, 1, 2, 1],
+            "smoke": [0, 0, 1, 0],
+            "alco": [0, 0, 0, 1],
+            "active": [1, 1, 0, 1],
+            "target": [0, 1, 0, 0],
+        }
+    )
 
 
 def test_validation_rules_built_from_config(config):
@@ -103,7 +112,9 @@ def test_validate_single_instance_out_of_range(config):
 
 def test_clean_data_removes_out_of_range_and_duplicate_rows(config, valid_df):
     validator = DataValidator(config)
-    dirty_df = pd.concat([valid_df, valid_df.iloc[[0]]], ignore_index=True)  # duplicate row
+    dirty_df = pd.concat(
+        [valid_df, valid_df.iloc[[0]]], ignore_index=True
+    )  # duplicate row
     dirty_df.loc[len(dirty_df)] = dirty_df.iloc[0]
     dirty_df.loc[len(dirty_df) - 1, "ap_hi"] = 999  # out-of-range row
 

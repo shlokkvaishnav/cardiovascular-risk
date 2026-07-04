@@ -7,6 +7,7 @@ while JWTs here authenticate an individual user for saving/retrieving
 their own report history. Guest/anonymous prediction usage never touches
 this module.
 """
+
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -96,11 +97,15 @@ def get_current_user(
 
 
 # --- Routes ---
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
+)
 def register(req: RegisterRequest, db: Session = Depends(get_db)):
     existing = db.query(User).filter(User.email == req.email).first()
     if existing is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email is already registered"
+        )
 
     user = User(email=req.email, hashed_password=hash_password(req.password))
     db.add(user)
@@ -112,7 +117,9 @@ def register(req: RegisterRequest, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 def login(req: LoginRequest, db: Session = Depends(get_db)):
-    invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+    invalid = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password"
+    )
     user = db.query(User).filter(User.email == req.email).first()
     if user is None or not verify_password(req.password, user.hashed_password):
         raise invalid
@@ -122,4 +129,6 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)):
-    return UserResponse(id=current_user.id, email=current_user.email, created_at=current_user.created_at)
+    return UserResponse(
+        id=current_user.id, email=current_user.email, created_at=current_user.created_at
+    )

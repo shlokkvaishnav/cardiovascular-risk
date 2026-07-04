@@ -7,48 +7,51 @@ from sklearn.pipeline import Pipeline
 
 logger = logging.getLogger(__name__)
 
+
 class ModelTrainer:
     """Orchestrates model training with MLflow tracking"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        mlflow.set_tracking_uri(config['mlflow']['tracking_uri'])
-        mlflow.set_experiment(config['mlflow']['experiment_name'])
-        
+        mlflow.set_tracking_uri(config["mlflow"]["tracking_uri"])
+        mlflow.set_experiment(config["mlflow"]["experiment_name"])
+
     def train_model(self, model, X_train, y_train, model_name: str):
         """Train model with MLflow tracking"""
-        
+
         with mlflow.start_run(run_name=model_name):
             # Log parameters
             mlflow.log_params(model.get_params())
-            
+
             # Cross-validation
             cv_scores = cross_val_score(
-                model, X_train, y_train,
-                cv=self.config['training']['cv_folds'],
-                scoring='accuracy',
-                n_jobs=self.config['training']['n_jobs']
+                model,
+                X_train,
+                y_train,
+                cv=self.config["training"]["cv_folds"],
+                scoring="accuracy",
+                n_jobs=self.config["training"]["n_jobs"],
             )
-            
+
             # Log metrics
             mlflow.log_metric("cv_accuracy_mean", cv_scores.mean())
             mlflow.log_metric("cv_accuracy_std", cv_scores.std())
-            
+
             # Train final model
             model.fit(X_train, y_train)
 
             # Log model. Explicit cloudpickle serialization avoids newer
             # mlflow's default skops format, which rejects common sklearn
             # pipeline internals (e.g. numpy.dtype) as "untrusted types".
-            mlflow.sklearn.log_model(
-                model, "model", serialization_format="cloudpickle"
-            )
-            
+            mlflow.sklearn.log_model(model, "model", serialization_format="cloudpickle")
+
             logger.info(f"{model_name}: CV Accuracy = {cv_scores.mean():.4f}")
-            
+
             return model, cv_scores.mean()
 
-    def train_all_models(self, X_train, y_train, preprocessor, artifacts_dir: str = "models/artifacts"):
+    def train_all_models(
+        self, X_train, y_train, preprocessor, artifacts_dir: str = "models/artifacts"
+    ):
         """Train standard models with preprocessing pipeline.
 
         Only models with a fast, *exact* SHAP explainer are candidates for the
@@ -67,8 +70,8 @@ class ModelTrainer:
             "RandomForest": RandomForestClassifier(
                 random_state=42,
                 n_estimators=300,
-                n_jobs=self.config['training'].get('n_jobs', -1),
-                class_weight='balanced_subsample'
+                n_jobs=self.config["training"].get("n_jobs", -1),
+                class_weight="balanced_subsample",
             ),
         }
 
@@ -94,6 +97,7 @@ class ModelTrainer:
         if best_model:
             import joblib
             import os
+
             os.makedirs(artifacts_dir, exist_ok=True)
             joblib.dump(best_model, os.path.join(artifacts_dir, "best_model.pkl"))
             logger.info(f"Best model saved: {best_model} with score {best_score}")
@@ -102,7 +106,9 @@ class ModelTrainer:
 
         return results
 
-    def _save_shap_background(self, X_train, artifacts_dir: str, sample_size: int = 100) -> None:
+    def _save_shap_background(
+        self, X_train, artifacts_dir: str, sample_size: int = 100
+    ) -> None:
         """Persist a small stratified-by-index sample of raw training rows as the
         SHAP background/reference dataset, so serving doesn't need the full
         training set in memory. Column order is preserved exactly as trained."""
@@ -110,7 +116,9 @@ class ModelTrainer:
         import os
 
         n = min(sample_size, len(X_train))
-        background = X_train.sample(n=n, random_state=self.config['project']['random_seed'])
+        background = X_train.sample(
+            n=n, random_state=self.config["project"]["random_seed"]
+        )
         path = os.path.join(artifacts_dir, "shap_background.pkl")
         joblib.dump(background, path)
         logger.info(f"SHAP background sample saved: {path} ({n} rows)")

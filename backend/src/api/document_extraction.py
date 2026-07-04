@@ -7,6 +7,7 @@ it's a convenience for filling out the same form, not a persistence feature.
 Extracted values are never used directly as a prediction -- the frontend
 shows them for the user to review/edit before submitting to /predict.
 """
+
 import logging
 from typing import Any, Dict
 
@@ -31,8 +32,12 @@ class ExtractionResponse(BaseModel):
 async def extract_report(file: UploadFile = File(...)):
     from ..rag.pipeline import process_medical_report
 
-    if file.filename is None or not file.filename.lower().endswith((".pdf", ".docx", ".doc")):
-        raise HTTPException(status_code=422, detail="Only PDF or DOCX files are supported")
+    if file.filename is None or not file.filename.lower().endswith(
+        (".pdf", ".docx", ".doc")
+    ):
+        raise HTTPException(
+            status_code=422, detail="Only PDF or DOCX files are supported"
+        )
 
     file_bytes = await file.read()
     if len(file_bytes) > MAX_UPLOAD_BYTES:
@@ -42,7 +47,9 @@ async def extract_report(file: UploadFile = File(...)):
         result = process_medical_report(file_bytes, file.filename)
     except RuntimeError as e:
         # GROQ_API_KEY not configured
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e)
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:

@@ -19,7 +19,9 @@ def perfect_predictions():
 
 def test_evaluate_model_perfect_predictions(evaluator, perfect_predictions):
     y_true, y_pred, y_pred_proba = perfect_predictions
-    metrics = evaluator.evaluate_model(y_true, y_pred, y_pred_proba, model_name="perfect")
+    metrics = evaluator.evaluate_model(
+        y_true, y_pred, y_pred_proba, model_name="perfect"
+    )
 
     assert metrics["accuracy"] == 1.0
     assert metrics["precision"] == 1.0
@@ -51,8 +53,22 @@ def test_evaluate_model_records_history(evaluator, perfect_predictions):
 
 def test_compare_models_picks_best_by_metric(evaluator):
     metrics_list = [
-        {"model_name": "low", "accuracy": 0.6, "precision": 0.5, "recall": 0.5, "f1_score": 0.5, "roc_auc": 0.5},
-        {"model_name": "high", "accuracy": 0.9, "precision": 0.8, "recall": 0.8, "f1_score": 0.8, "roc_auc": 0.85},
+        {
+            "model_name": "low",
+            "accuracy": 0.6,
+            "precision": 0.5,
+            "recall": 0.5,
+            "f1_score": 0.5,
+            "roc_auc": 0.5,
+        },
+        {
+            "model_name": "high",
+            "accuracy": 0.9,
+            "precision": 0.8,
+            "recall": 0.8,
+            "f1_score": 0.8,
+            "roc_auc": 0.85,
+        },
     ]
     comparison = evaluator.compare_models(metrics_list)
     assert comparison["best_by_metric"]["accuracy"]["model"] == "high"
@@ -67,17 +83,23 @@ def test_calculate_business_metrics_weighs_false_negatives_more(evaluator):
     y_true = np.array([1, 1, 0, 0])
     y_pred = np.array([0, 0, 1, 1])  # 2 FN, 2 FP
 
-    result = evaluator.calculate_business_metrics(y_true, y_pred, cost_fp=1.0, cost_fn=10.0)
+    result = evaluator.calculate_business_metrics(
+        y_true, y_pred, cost_fp=1.0, cost_fn=10.0
+    )
 
     assert result["false_negatives"] == 2
     assert result["false_positives"] == 2
     assert result["total_cost"] == pytest.approx(2 * 1.0 + 2 * 10.0)
-    assert result["avg_cost_per_prediction"] == pytest.approx(result["total_cost"] / len(y_true))
+    assert result["avg_cost_per_prediction"] == pytest.approx(
+        result["total_cost"] / len(y_true)
+    )
 
 
 def test_save_and_load_metrics_roundtrip(evaluator, tmp_path, perfect_predictions):
     y_true, y_pred, y_pred_proba = perfect_predictions
-    metrics = evaluator.evaluate_model(y_true, y_pred, y_pred_proba, model_name="roundtrip")
+    metrics = evaluator.evaluate_model(
+        y_true, y_pred, y_pred_proba, model_name="roundtrip"
+    )
 
     path = tmp_path / "metrics.json"
     evaluator.save_metrics(metrics, path)
@@ -90,7 +112,9 @@ def test_save_and_load_metrics_roundtrip(evaluator, tmp_path, perfect_prediction
 
 def test_get_performance_summary_contains_key_metrics(evaluator, perfect_predictions):
     y_true, y_pred, y_pred_proba = perfect_predictions
-    metrics = evaluator.evaluate_model(y_true, y_pred, y_pred_proba, model_name="summary")
+    metrics = evaluator.evaluate_model(
+        y_true, y_pred, y_pred_proba, model_name="summary"
+    )
     summary = evaluator.get_performance_summary(metrics)
 
     assert "summary" in metrics["model_name"] or "summary" in summary

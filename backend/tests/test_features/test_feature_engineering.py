@@ -12,8 +12,18 @@ def config():
         "data": {"test_size": 0.3},
         "preprocessing": {
             "numerical_features": ["age", "height", "weight", "bmi", "ap_hi", "ap_lo"],
-            "categorical_features": ["sex", "cholesterol", "gluc", "smoke", "alco", "active"],
-            "imputation_strategy": {"numerical": "median", "categorical": "most_frequent"},
+            "categorical_features": [
+                "sex",
+                "cholesterol",
+                "gluc",
+                "smoke",
+                "alco",
+                "active",
+            ],
+            "imputation_strategy": {
+                "numerical": "median",
+                "categorical": "most_frequent",
+            },
         },
         "training": {"n_jobs": 1},
     }
@@ -23,21 +33,23 @@ def config():
 def raw_df():
     rng = np.random.default_rng(42)
     n = 100
-    return pd.DataFrame({
-        "age": rng.integers(18, 90, n),
-        "sex": rng.integers(0, 2, n),
-        "height": rng.integers(150, 200, n),
-        "weight": rng.uniform(50, 110, n),
-        "bmi": rng.uniform(18, 35, n),
-        "ap_hi": rng.integers(90, 180, n),
-        "ap_lo": rng.integers(60, 110, n),
-        "cholesterol": rng.integers(1, 4, n),
-        "gluc": rng.integers(1, 4, n),
-        "smoke": rng.integers(0, 2, n),
-        "alco": rng.integers(0, 2, n),
-        "active": rng.integers(0, 2, n),
-        "target": rng.integers(0, 2, n),
-    })
+    return pd.DataFrame(
+        {
+            "age": rng.integers(18, 90, n),
+            "sex": rng.integers(0, 2, n),
+            "height": rng.integers(150, 200, n),
+            "weight": rng.uniform(50, 110, n),
+            "bmi": rng.uniform(18, 35, n),
+            "ap_hi": rng.integers(90, 180, n),
+            "ap_lo": rng.integers(60, 110, n),
+            "cholesterol": rng.integers(1, 4, n),
+            "gluc": rng.integers(1, 4, n),
+            "smoke": rng.integers(0, 2, n),
+            "alco": rng.integers(0, 2, n),
+            "active": rng.integers(0, 2, n),
+            "target": rng.integers(0, 2, n),
+        }
+    )
 
 
 def test_prepare_features_splits_and_drops_target(config, raw_df):

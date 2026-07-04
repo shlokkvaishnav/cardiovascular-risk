@@ -1,6 +1,7 @@
 """
 Comprehensive API tests
 """
+
 import pytest
 from fastapi.testclient import TestClient
 import sys
@@ -12,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.api.app import app
 
 client = TestClient(app)
+
 
 class TestHealthEndpoints:
     """Test health and info endpoints"""
@@ -43,6 +45,7 @@ class TestHealthEndpoints:
         assert "features" in data
         assert len(data["features"]) == 12
 
+
 class TestPredictionEndpoints:
     """Test prediction endpoints"""
 
@@ -60,12 +63,14 @@ class TestPredictionEndpoints:
             "gluc": 1,
             "smoke": 0,
             "alco": 0,
-            "active": 1
+            "active": 1,
         }
 
     def test_predict_valid_request(self, valid_request_data):
         """Test prediction with valid data"""
-        response = client.post("/predict", json=valid_request_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=valid_request_data, headers={"X-API-Key": "dev-api-key"}
+        )
 
         # May return 503 if model not loaded, which is acceptable
         if response.status_code == 503:
@@ -86,7 +91,9 @@ class TestPredictionEndpoints:
         contributions regardless of which model type won training (the old
         coefficient-proxy explanation silently returned None for
         RandomForest/SVM -- this is the literal bug that was fixed)."""
-        response = client.post("/predict", json=valid_request_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=valid_request_data, headers={"X-API-Key": "dev-api-key"}
+        )
 
         if response.status_code == 503:
             pytest.skip("Model not loaded in this environment")
@@ -104,7 +111,9 @@ class TestPredictionEndpoints:
         invalid_data = valid_request_data.copy()
         invalid_data["age"] = 150  # Invalid age
 
-        response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code == 422  # Validation error
 
     def test_predict_missing_field(self, valid_request_data):
@@ -112,7 +121,9 @@ class TestPredictionEndpoints:
         incomplete_data = valid_request_data.copy()
         del incomplete_data["age"]
 
-        response = client.post("/predict", json=incomplete_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=incomplete_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code == 422
 
     def test_predict_invalid_type(self, valid_request_data):
@@ -120,7 +131,9 @@ class TestPredictionEndpoints:
         invalid_data = valid_request_data.copy()
         invalid_data["age"] = "not a number"
 
-        response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code == 422
 
     def test_predict_out_of_range_values(self, valid_request_data):
@@ -128,7 +141,9 @@ class TestPredictionEndpoints:
         invalid_data = valid_request_data.copy()
         invalid_data["weight"] = 1000  # Too high
 
-        response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code == 422
 
     def test_predict_inconsistent_blood_pressure(self, valid_request_data):
@@ -137,8 +152,11 @@ class TestPredictionEndpoints:
         invalid_data["ap_hi"] = 80
         invalid_data["ap_lo"] = 90
 
-        response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code == 422
+
 
 class TestBatchPrediction:
     """Test batch prediction endpoint"""
@@ -149,21 +167,41 @@ class TestBatchPrediction:
         return {
             "instances": [
                 {
-                    "age": 58, "sex": 1, "height": 175, "weight": 85,
-                    "ap_hi": 145, "ap_lo": 90, "cholesterol": 2, "gluc": 1,
-                    "smoke": 0, "alco": 0, "active": 1
+                    "age": 58,
+                    "sex": 1,
+                    "height": 175,
+                    "weight": 85,
+                    "ap_hi": 145,
+                    "ap_lo": 90,
+                    "cholesterol": 2,
+                    "gluc": 1,
+                    "smoke": 0,
+                    "alco": 0,
+                    "active": 1,
                 },
                 {
-                    "age": 45, "sex": 0, "height": 165, "weight": 60,
-                    "ap_hi": 110, "ap_lo": 70, "cholesterol": 1, "gluc": 1,
-                    "smoke": 0, "alco": 0, "active": 1
-                }
+                    "age": 45,
+                    "sex": 0,
+                    "height": 165,
+                    "weight": 60,
+                    "ap_hi": 110,
+                    "ap_lo": 70,
+                    "cholesterol": 1,
+                    "gluc": 1,
+                    "smoke": 0,
+                    "alco": 0,
+                    "active": 1,
+                },
             ]
         }
 
     def test_batch_predict_valid(self, valid_batch_request):
         """Test batch prediction with valid data"""
-        response = client.post("/batch-predict", json=valid_batch_request, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/batch-predict",
+            json=valid_batch_request,
+            headers={"X-API-Key": "dev-api-key"},
+        )
 
         # May return 503 if model not loaded
         if response.status_code == 503:
@@ -177,21 +215,38 @@ class TestBatchPrediction:
 
     def test_batch_predict_empty_list(self):
         """Test batch prediction with empty instances list"""
-        response = client.post("/batch-predict", json={"instances": []}, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/batch-predict",
+            json={"instances": []},
+            headers={"X-API-Key": "dev-api-key"},
+        )
         assert response.status_code == 422
 
     def test_batch_predict_too_many_instances(self):
         """Test batch prediction with too many instances"""
         instances = [
             {
-                "age": 58, "sex": 1, "height": 175, "weight": 85,
-                "ap_hi": 145, "ap_lo": 90, "cholesterol": 2, "gluc": 1,
-                "smoke": 0, "alco": 0, "active": 1
+                "age": 58,
+                "sex": 1,
+                "height": 175,
+                "weight": 85,
+                "ap_hi": 145,
+                "ap_lo": 90,
+                "cholesterol": 2,
+                "gluc": 1,
+                "smoke": 0,
+                "alco": 0,
+                "active": 1,
             }
         ] * 101  # More than max allowed (100)
 
-        response = client.post("/batch-predict", json={"instances": instances}, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/batch-predict",
+            json={"instances": instances},
+            headers={"X-API-Key": "dev-api-key"},
+        )
         assert response.status_code == 422
+
 
 class TestModelManagement:
     """Test model management endpoints"""
@@ -209,6 +264,7 @@ class TestModelManagement:
             assert "message" in data
             assert "metadata" in data
 
+
 class TestErrorHandling:
     """Test error handling"""
 
@@ -222,6 +278,7 @@ class TestErrorHandling:
         response = client.get("/predict")  # Should be POST
         assert response.status_code == 405
 
+
 class TestRequestValidation:
     """Test comprehensive request validation"""
 
@@ -229,23 +286,44 @@ class TestRequestValidation:
         """Test boundary values for all fields"""
         # Minimum valid values
         min_data = {
-            "age": 18, "sex": 0, "height": 120, "weight": 30,
-            "ap_hi": 90, "ap_lo": 70, "cholesterol": 1, "gluc": 1,
-            "smoke": 0, "alco": 0, "active": 0
+            "age": 18,
+            "sex": 0,
+            "height": 120,
+            "weight": 30,
+            "ap_hi": 90,
+            "ap_lo": 70,
+            "cholesterol": 1,
+            "gluc": 1,
+            "smoke": 0,
+            "alco": 0,
+            "active": 0,
         }
 
-        response = client.post("/predict", json=min_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=min_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code in [200, 503]  # 503 if model not loaded
 
         # Maximum valid values
         max_data = {
-            "age": 100, "sex": 1, "height": 220, "weight": 250,
-            "ap_hi": 240, "ap_lo": 160, "cholesterol": 3, "gluc": 3,
-            "smoke": 1, "alco": 1, "active": 1
+            "age": 100,
+            "sex": 1,
+            "height": 220,
+            "weight": 250,
+            "ap_hi": 240,
+            "ap_lo": 160,
+            "cholesterol": 3,
+            "gluc": 3,
+            "smoke": 1,
+            "alco": 1,
+            "active": 1,
         }
 
-        response = client.post("/predict", json=max_data, headers={"X-API-Key": "dev-api-key"})
+        response = client.post(
+            "/predict", json=max_data, headers={"X-API-Key": "dev-api-key"}
+        )
         assert response.status_code in [200, 503]
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

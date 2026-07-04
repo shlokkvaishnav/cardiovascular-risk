@@ -1,6 +1,7 @@
 """
 SQLAlchemy models for the optional accounts/report-history feature.
 """
+
 import uuid
 from datetime import datetime, timezone
 
@@ -17,12 +18,20 @@ def _utcnow() -> datetime:
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
 
-    reports: Mapped[list["Report"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    reports: Mapped[list["Report"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class Report(Base):
@@ -33,8 +42,12 @@ class Report(Base):
 
     __tablename__ = "reports"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True, nullable=False)
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), index=True, nullable=False
+    )
 
     # Submitted clinical inputs (backend PredictionRequest fields)
     inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -47,6 +60,8 @@ class Report(Base):
     baseline_probability: Mapped[float] = mapped_column(Float, nullable=True)
 
     note: Mapped[str] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, index=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="reports")

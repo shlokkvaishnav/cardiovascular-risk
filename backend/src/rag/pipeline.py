@@ -33,7 +33,9 @@ def _get_groq():
     global _groq_client
     if _groq_client is None:
         if not GROQ_API_KEY:
-            raise RuntimeError("GROQ_API_KEY is not configured; document extraction is unavailable")
+            raise RuntimeError(
+                "GROQ_API_KEY is not configured; document extraction is unavailable"
+            )
         from groq import Groq
 
         _groq_client = Groq(api_key=GROQ_API_KEY)
@@ -55,7 +57,9 @@ def _extract_pdf(file_bytes: bytes) -> str:
         return "\n".join(parts)
     except Exception as e:
         # Malformed/corrupted PDF is a bad-input error, not a server error.
-        raise ValueError(f"Could not read this PDF -- it may be corrupted or password-protected: {e}") from e
+        raise ValueError(
+            f"Could not read this PDF -- it may be corrupted or password-protected: {e}"
+        ) from e
 
 
 def _extract_docx(file_bytes: bytes) -> str:
@@ -71,7 +75,9 @@ def _extract_docx(file_bytes: bytes) -> str:
                         paras.append(cell.text.strip())
         return "\n".join(paras)
     except Exception as e:
-        raise ValueError(f"Could not read this DOCX file -- it may be corrupted: {e}") from e
+        raise ValueError(
+            f"Could not read this DOCX file -- it may be corrupted: {e}"
+        ) from e
 
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
@@ -96,9 +102,13 @@ class TFIDFRetriever:
         self._cos = cosine_similarity
         self._np = np
 
-        self._vectorizer = TfidfVectorizer(ngram_range=(1, 2), max_features=8000, sublinear_tf=True)
+        self._vectorizer = TfidfVectorizer(
+            ngram_range=(1, 2), max_features=8000, sublinear_tf=True
+        )
         self._matrix = self._vectorizer.fit_transform(chunks)
-        logger.info(f"[RAG] TF-IDF index built: {len(chunks)} chunks, vocab={len(self._vectorizer.vocabulary_)}")
+        logger.info(
+            f"[RAG] TF-IDF index built: {len(chunks)} chunks, vocab={len(self._vectorizer.vocabulary_)}"
+        )
 
     def invoke(self, query: str, k: int = 8) -> list:
         q_vec = self._vectorizer.transform([query])
@@ -196,7 +206,10 @@ def extract_with_llm(context: str) -> dict:
         model=GROQ_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Extract cardiovascular risk factors from this medical report:\n\n{context[:7000]}"},
+            {
+                "role": "user",
+                "content": f"Extract cardiovascular risk factors from this medical report:\n\n{context[:7000]}",
+            },
         ],
         temperature=0.1,
         max_tokens=2048,
@@ -237,8 +250,17 @@ FIELD_RANGES = {
 }
 
 DEFAULTS = {
-    "age": 50, "sex": 1, "height": 170, "weight": 75, "ap_hi": 130, "ap_lo": 85,
-    "cholesterol": 1, "gluc": 1, "smoke": 0, "alco": 0, "active": 1,
+    "age": 50,
+    "sex": 1,
+    "height": 170,
+    "weight": 75,
+    "ap_hi": 130,
+    "ap_lo": 85,
+    "cholesterol": 1,
+    "gluc": 1,
+    "smoke": 0,
+    "alco": 0,
+    "active": 1,
 }
 
 
