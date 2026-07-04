@@ -41,6 +41,7 @@ export function RiskSimulator(props: Props) {
       smokingStatus: "never",
       activityLevel: "high",
       unknownVitals: {
+        ...prev.unknownVitals,
         systolicBp: false,
         totalCholesterol: false,
         hdlCholesterol: false,

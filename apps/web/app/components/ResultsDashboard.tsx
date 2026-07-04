@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { AlertTriangle, CheckCircle2, GaugeCircle, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, CloudOff, GaugeCircle, ShieldCheck, TriangleAlert, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { RiskTimeline } from "./results/RiskTimeline";
@@ -12,6 +12,16 @@ import { createShareableResultsUrl, decodeSharedResult } from "../lib/shareUrl";
 import { RiskSimulator } from "./simulator/RiskSimulator";
 import { HeartAge } from "../results/HeartAge";
 import { runRiskCalc } from "../lib/riskEngine";
+import {
+  backendResponseToRiskResult,
+  fetchBackendPrediction,
+  mapAssessmentToPredictionRequest,
+  PredictionApiError,
+} from "../lib/predictApi";
+import { isLoggedIn } from "../lib/authApi";
+import { saveReport } from "../lib/reportsApi";
+
+type BackendStatus = "idle" | "loading" | "ready" | "error";
 
 const STORAGE_KEY = "cardio_assessment_v1";
 
@@ -144,6 +154,10 @@ export function ResultsDashboard() {
   const [hasData, setHasData] = useState(true);
   const [dismissedEscalation, setDismissedEscalation] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
+  const [backendResult, setBackendResult] = useState<RiskResult | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>("idle");
+  const [defaultedFields, setDefaultedFields] = useState<string[]>([]);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const { history, historyCount, clearHistory } = useAssessmentHistory();
 
   useEffect(() => {
@@ -186,11 +200,40 @@ export function ResultsDashboard() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  // The heuristic result renders instantly for a snappy UX; the real,
+  // SHAP-explained clinical model result is fetched in the background and
+  // swaps in once ready. On failure, the heuristic estimate stays visible
+  // with a clear "estimate only" banner instead of silently passing it off
+  // as the model result.
+  useEffect(() => {
+    if (!assessmentData) return;
+    let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- standard data-fetching pattern
+    setBackendStatus("loading");
+
+    fetchBackendPrediction(assessmentData)
+      .then(({ response, defaultedFields: mapped }) => {
+        if (cancelled) return;
+        setBackendResult(backendResponseToRiskResult(response, scoreRisk(assessmentData).recommendations));
+        setDefaultedFields(mapped);
+        setBackendStatus("ready");
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.warn("Backend prediction unavailable, showing quick-estimate only:", err instanceof PredictionApiError ? err.message : err);
+        setBackendStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assessmentData]);
+
   const displayedResult = activeTab === "simulate" && simulatedResult ? simulatedResult : result;
 
   const projectedResult = useMemo(() => {
     if (!assessmentData || !result) return null;
-    if (projectionMode === "current") return result;
+    if (projectionMode === "current") return backendStatus === "ready" && backendResult ? backendResult : result;
     if (projectionMode === "best") {
       return runRiskCalc({
         ...assessmentData,
@@ -211,7 +254,7 @@ export function ResultsDashboard() {
       smokingStatus: "current",
       activityLevel: "low",
     });
-  }, [assessmentData, projectionMode, result]);
+  }, [assessmentData, projectionMode, result, backendResult, backendStatus]);
 
   const activeResult = activeTab === "overview" ? projectedResult : displayedResult;
   const activeScore = activeResult?.score ?? null;
@@ -464,6 +507,39 @@ export function ResultsDashboard() {
             <span className={statusClass(activeResult!.score)}>{activeResult!.category.toUpperCase()} RISK</span>
           </div>
           <p className="lead">{activeResult!.summary}</p>
+
+          {projectionMode === "current" && activeTab === "overview" && (
+            <>
+              {backendStatus === "loading" && (
+                <div className="alert-row" aria-live="polite">
+                  <div className="trust-pill">
+                    <GaugeCircle className="spin" size={14} />
+                    Quick estimate shown — calculating your full clinical model result…
+                  </div>
+                </div>
+              )}
+              {backendStatus === "ready" && (
+                <div className="alert-row" aria-live="polite">
+                  <div className="trust-pill">
+                    <ShieldCheck size={14} />
+                    Clinical model result (SHAP-explained)
+                    {defaultedFields.length > 0
+                      ? ` — ${defaultedFields.length} value(s) estimated because they weren't collected`
+                      : ""}
+                  </div>
+                </div>
+              )}
+              {backendStatus === "error" && (
+                <div className="alert-row" aria-live="polite">
+                  <div className="trust-pill">
+                    <CloudOff size={14} />
+                    Showing a quick estimate — our clinical model is temporarily unavailable
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
           <div className="results-tabs">
             <button
               type="button"
@@ -616,6 +692,31 @@ export function ResultsDashboard() {
             <Link href="/assess" className="btn btn-subtle">
               Re-run Assessment
             </Link>
+            {backendStatus === "ready" && assessmentData && (
+              isLoggedIn() ? (
+                <button
+                  type="button"
+                  className="btn btn-subtle"
+                  disabled={saveStatus === "saving"}
+                  onClick={async () => {
+                    setSaveStatus("saving");
+                    try {
+                      const { request } = mapAssessmentToPredictionRequest(assessmentData);
+                      await saveReport(request);
+                      setSaveStatus("saved");
+                    } catch {
+                      setSaveStatus("error");
+                    }
+                  }}
+                >
+                  {saveStatus === "saved" ? "Saved to history" : saveStatus === "saving" ? "Saving..." : "Save this result"}
+                </button>
+              ) : (
+                <Link href="/login" className="btn btn-subtle">
+                  Log in to save this result
+                </Link>
+              )
+            )}
             <button
               type="button"
               className="btn btn-subtle"

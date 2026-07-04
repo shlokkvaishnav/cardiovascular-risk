@@ -7,13 +7,14 @@ import {
   Ban,
   CircleHelp,
   Cigarette,
+  FileUp,
   HeartPulse,
   LoaderCircle,
   ShieldCheck,
   Timer,
   UserRound,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { appendAssessmentHistory } from "../hooks/useAssessmentHistory";
 import {
@@ -24,6 +25,7 @@ import {
   createEmptyAssessment,
   scoreRisk,
 } from "../lib/risk";
+import { extractFromDocument, extractionToAssessmentPatch, ExtractionApiError } from "../lib/extractApi";
 
 const STORAGE_KEY = "cardio_assessment_v1";
 const DRAFT_KEY = "cardio_assessment_draft_v1";
@@ -204,6 +206,26 @@ export function AssessmentWizard() {
   const [bpUnit, setBpUnit] = useState<"mmHg" | "kPa">("mmHg");
   const [cholUnit, setCholUnit] = useState<"mg/dL" | "mmol/L">("mg/dL");
   const [data, setData] = useState<AssessmentData>(createEmptyAssessment());
+  const [uploadStatus, setUploadStatus] = useState<"idle" | "uploading" | "error">("idle");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [extractionConfidence, setExtractionConfidence] = useState<Record<string, number> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleReportUpload = useCallback(async (file: File) => {
+    setUploadStatus("uploading");
+    setUploadError(null);
+    try {
+      const extraction = await extractFromDocument(file);
+      const patch = extractionToAssessmentPatch(extraction);
+      setData((prev) => ({ ...prev, ...patch }));
+      setExtractionConfidence(extraction.confidence);
+      setUploadStatus("idle");
+      setStep(5); // Review -- user confirms/edits extracted values before submitting
+    } catch (err) {
+      setUploadStatus("error");
+      setUploadError(err instanceof ExtractionApiError ? err.message : "Could not process this document.");
+    }
+  }, []);
 
   const analysisTips = [
     "Cardiovascular risk estimates are probabilities, not diagnoses.",
@@ -240,11 +262,12 @@ export function AssessmentWizard() {
         ((Number(data.age !== null) +
           Number(data.sex !== null) +
           Number(data.smokingStatus !== null) +
+          Number(data.alcohol !== null) +
           Number(data.activityLevel !== null) +
           Number(data.diabetes !== null) +
           Number(data.familyHistoryType !== null) +
           Number(data.onBpMedication !== null)) /
-          7) *
+          8) *
           100,
       ),
     [data],
@@ -276,11 +299,14 @@ export function AssessmentWizard() {
     if (step === 1) return numberValidity(data.age, 20, 79) && data.sex !== null;
     if (step === 2) {
       const bpValid = data.unknownVitals.systolicBp || numberValidity(data.systolicBp, 80, 240);
+      const dbpValid = data.unknownVitals.diastolicBp || data.diastolicBp === null || numberValidity(data.diastolicBp, 40, 160);
       const totalCholValid = data.unknownVitals.totalCholesterol || numberValidity(data.totalCholesterol, 100, 400);
       const hdlValid = data.unknownVitals.hdlCholesterol || numberValidity(data.hdlCholesterol, 20, 130);
-      return bpValid && totalCholValid && hdlValid;
+      const heightValid = data.heightCm === null || numberValidity(data.heightCm, 120, 220);
+      const weightValid = data.weightKg === null || numberValidity(data.weightKg, 30, 250);
+      return bpValid && dbpValid && totalCholValid && hdlValid && heightValid && weightValid;
     }
-    if (step === 3) return data.smokingStatus !== null && data.activityLevel !== null;
+    if (step === 3) return data.smokingStatus !== null && data.activityLevel !== null && data.alcohol !== null;
     if (step === 4) return data.diabetes !== null && data.familyHistoryType !== null && data.onBpMedication !== null;
     if (step === 5) return true;
     return false;
@@ -417,6 +443,33 @@ export function AssessmentWizard() {
               Based on Framingham / Pooled Cohort principles
             </div>
           </div>
+          <div className="field-inline" style={{ marginTop: 16 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.doc"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleReportUpload(file);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="btn btn-subtle"
+              disabled={uploadStatus === "uploading"}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FileUp size={16} />
+              {uploadStatus === "uploading" ? "Reading document..." : "Upload a lab report instead"}
+            </button>
+          </div>
+          {uploadStatus === "error" && uploadError && (
+            <div className="error-box" aria-live="assertive">
+              <p>{uploadError}</p>
+            </div>
+          )}
         </div>
       );
     }
@@ -485,6 +538,59 @@ export function AssessmentWizard() {
             disabled={data.unknownVitals.systolicBp}
             helper="Top blood pressure number when your heart beats."
             onChange={(value) => update("systolicBp", fromBpDisplay(value))}
+          />
+
+          <div className="field-inline">
+            <span className="field-label">
+              Diastolic BP <span title={showTooltip}><CircleHelp size={14} /></span>
+            </span>
+            <button
+              type="button"
+              className={`chip ${data.unknownVitals.diastolicBp ? "active" : ""}`}
+              onClick={() =>
+                setData((prev) => ({
+                  ...prev,
+                  unknownVitals: { ...prev.unknownVitals, diastolicBp: !prev.unknownVitals.diastolicBp },
+                  diastolicBp: !prev.unknownVitals.diastolicBp ? null : prev.diastolicBp,
+                }))
+              }
+            >
+              I do not know
+            </button>
+          </div>
+          <FloatingInput
+            id="dbp"
+            label="Diastolic Blood Pressure"
+            value={toBpDisplay(data.diastolicBp)}
+            min={bpUnit === "mmHg" ? 40 : 5.3}
+            max={bpUnit === "mmHg" ? 160 : 21.3}
+            unit={bpUnit}
+            disabled={data.unknownVitals.diastolicBp}
+            helper="Bottom blood pressure number when your heart rests between beats."
+            onChange={(value) => update("diastolicBp", fromBpDisplay(value))}
+          />
+
+          <div className="field-inline">
+            <span className="field-label">Body Metrics</span>
+          </div>
+          <FloatingInput
+            id="height"
+            label="Height"
+            value={data.heightCm}
+            min={120}
+            max={220}
+            unit="cm"
+            helper="Used to calculate BMI, a factor in the clinical risk model."
+            onChange={(value) => update("heightCm", value)}
+          />
+          <FloatingInput
+            id="weight"
+            label="Weight"
+            value={data.weightKg}
+            min={30}
+            max={250}
+            unit="kg"
+            onChange={(value) => update("weightKg", value)}
           />
 
           <div className="field-inline">
@@ -586,6 +692,15 @@ export function AssessmentWizard() {
             ]}
             onChange={(value) => update("activityLevel", value)}
           />
+          <OptionGrid
+            label="Alcohol consumption"
+            value={data.alcohol === null ? null : data.alcohol ? "yes" : "no"}
+            options={[
+              { value: "no", title: "No", description: "No regular alcohol intake" },
+              { value: "yes", title: "Yes", description: "Regular alcohol intake" },
+            ]}
+            onChange={(value) => update("alcohol", value === "yes")}
+          />
         </div>
       );
     }
@@ -641,6 +756,15 @@ export function AssessmentWizard() {
           extreme: data.systolicBp !== null && data.systolicBp >= 180,
         },
         {
+          label: "Diastolic BP",
+          value: data.unknownVitals.diastolicBp ? "I do not know" : data.diastolicBp ? `${data.diastolicBp} mmHg` : "Not set",
+          extreme: data.diastolicBp !== null && data.diastolicBp >= 120,
+        },
+        {
+          label: "Height / Weight",
+          value: data.heightCm && data.weightKg ? `${data.heightCm} cm / ${data.weightKg} kg` : "Not set",
+        },
+        {
           label: "Total Cholesterol",
           value: data.unknownVitals.totalCholesterol ? "I do not know" : data.totalCholesterol ? `${data.totalCholesterol} mg/dL` : "Not set",
           extreme: data.totalCholesterol !== null && data.totalCholesterol >= 280,
@@ -651,6 +775,7 @@ export function AssessmentWizard() {
           extreme: data.hdlCholesterol !== null && data.hdlCholesterol <= 30,
         },
         { label: "Smoking", value: data.smokingStatus ?? "Not set" },
+        { label: "Alcohol", value: data.alcohol === null ? "Not set" : data.alcohol ? "Yes" : "No" },
         { label: "Activity", value: data.activityLevel ?? "Not set" },
         { label: "Diabetes", value: data.diabetes === null ? "Not set" : data.diabetes ? "Yes" : "No" },
         {
@@ -663,6 +788,15 @@ export function AssessmentWizard() {
         <div className="step-block">
           <h2 className="type-h2">Review & Confirm</h2>
           <p className="lead">Check details before generating risk analysis.</p>
+          {extractionConfidence && (
+            <div className="alert-row">
+              <div className="trust-pill">
+                <FileUp size={14} />
+                Values pre-filled from your uploaded document -- please review each one before continuing.
+                {Object.values(extractionConfidence).some((c) => c < 0.5) ? " Some values had low extraction confidence." : ""}
+              </div>
+            </div>
+          )}
           <div className="review-list">
             {rows.map((row) => (
               <div className={`review-row ${row.extreme ? "review-row-warn" : ""}`} key={row.label}>

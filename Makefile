@@ -1,8 +1,11 @@
-.PHONY: install test train predict clean
+.PHONY: install bootstrap test train predict clean
 
 install:
 	pip install -e "backend[dev,viz]"
 	pre-commit install
+
+bootstrap: install train
+	@echo "Bootstrap complete: model trained and ready. Run 'docker compose up' to serve it."
 
 test:
 	pytest backend/tests/ -v --cov=backend/src --cov-report=html

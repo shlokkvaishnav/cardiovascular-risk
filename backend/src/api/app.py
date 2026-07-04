@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
+import pandas as pd
 
 # Import consolidated schemas
 from .schemas import (
@@ -27,10 +28,21 @@ from .schemas import (
     HealthResponse,
     ModelInfo,
 )
+from ..evaluation.explainer import SHAPExplainer
+from . import auth as auth_router_module
+from . import reports as reports_router_module
+from . import document_extraction as document_extraction_router_module
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Counter, Histogram
 
+# Model-facing feature order (must match preprocessing.numerical_features +
+# categorical_features in config.yaml, and the columns produced by
+# DataLoader._preprocess_cardio_lifestyle). Note "bmi" is derived server-side
+# from the client-facing height/weight fields in PredictionRequest -- see
+# _to_feature_vector -- rather than accepted directly from the client.
 FEATURE_NAMES: List[str] = [
-    "age", "sex", "cp", "trestbps", "chol", "fbs", "restecg",
-    "thalach", "exang", "oldpeak", "slope", "ca", "thal"
+    "age", "sex", "height", "weight", "bmi", "ap_hi", "ap_lo",
+    "cholesterol", "gluc", "smoke", "alco", "active"
 ]
 
 
@@ -84,12 +96,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Optional accounts/report-history feature (Postgres-backed). Entirely
+# separate from the core prediction flow -- guest/anonymous usage never
+# touches these routes.
+app.include_router(auth_router_module.router)
+app.include_router(reports_router_module.router)
+app.include_router(document_extraction_router_module.router)
+
+# --- Monitoring ---
+# Standard HTTP request metrics (latency, request count by path/status) at
+# /metrics, plus custom ML-specific metrics below: prediction volume by risk
+# level and a distribution of predicted probabilities, both cheap proxies for
+# spotting model/data drift over time without a full drift-detection service.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+
+PREDICTIONS_BY_RISK_LEVEL = Counter(
+    "cardio_predictions_total", "Total predictions served, by risk level", ["risk_level"]
+)
+PREDICTED_PROBABILITY = Histogram(
+    "cardio_predicted_probability",
+    "Distribution of predicted cardiovascular risk probabilities",
+    buckets=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+)
+
 # Global State
 model = None
+explainer: Optional[SHAPExplainer] = None
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
 MODEL_PATH = BACKEND_DIR / "models" / "artifacts" / "best_model.pkl"
 METADATA_PATH = BACKEND_DIR / "models" / "artifacts" / "training_metadata.json"
+SHAP_BACKGROUND_PATH = BACKEND_DIR / "models" / "artifacts" / "shap_background.pkl"
 model_metadata = {
     "loaded": False,
     "version": "unknown",
@@ -97,15 +134,26 @@ model_metadata = {
 }
 
 
-def _to_feature_vector(req: PredictionRequest) -> np.ndarray:
-    return np.array([[getattr(req, feature) for feature in FEATURE_NAMES]], dtype=np.float64)
+def _to_feature_vector(req: PredictionRequest) -> pd.DataFrame:
+    """Build a single-row DataFrame with named columns. The trained Pipeline's
+    ColumnTransformer selects columns by name (fit on a DataFrame during
+    training), so a raw ndarray fails at transform time with
+    'Specifying the columns using strings is only supported for dataframes.'
+
+    BMI is derived here (not accepted from the client) so it's always
+    consistent with height/weight and with how DataLoader derives it at
+    training time.
+    """
+    values: Dict[str, float] = req.model_dump()
+    values["bmi"] = req.weight / ((req.height / 100) ** 2)
+    return pd.DataFrame([[values[feature] for feature in FEATURE_NAMES]], columns=FEATURE_NAMES)
 
 
 def _risk_level(probability: float) -> str:
     return "High" if probability > 0.7 else "Medium" if probability > 0.4 else "Low"
 
 
-def _model_predict(model_ref, features: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _model_predict(model_ref, features: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     predictions = np.asarray(model_ref.predict(features), dtype=int)
     if hasattr(model_ref, "predict_proba"):
         probs = np.asarray(model_ref.predict_proba(features), dtype=float)
@@ -117,44 +165,21 @@ def _model_predict(model_ref, features: np.ndarray) -> Tuple[np.ndarray, np.ndar
     return predictions, probability, confidence
 
 
-def _build_explanations(features: np.ndarray) -> Optional[List[Dict[str, float]]]:
-    """Return a lightweight local explanation proxy using linear coefficients when available."""
-    if model is None:
+def _load_explainer(model_ref) -> Optional[SHAPExplainer]:
+    """Build a real SHAP explainer for the loaded model, using the background
+    sample persisted at training time. Never raises: returns None (and logs)
+    on any failure, so a missing/corrupt background never blocks startup."""
+    if model_ref is None or not SHAP_BACKGROUND_PATH.exists():
         return None
-
-    core_model = model
-    preprocessor = None
-    feature_names = FEATURE_NAMES
-
-    if hasattr(model, "named_steps"):
-        preprocessor = model.named_steps.get("preprocessor")
-        core_model = model.named_steps.get("model", model)
-        if preprocessor is not None and hasattr(preprocessor, "get_feature_names_out"):
-            feature_names = list(preprocessor.get_feature_names_out())
-
-    if not hasattr(core_model, "coef_"):
+    try:
+        background_df = joblib.load(SHAP_BACKGROUND_PATH)
+        # Keep as a DataFrame with named columns: the ColumnTransformer was
+        # fit on a DataFrame and requires one at transform time too.
+        background = background_df[FEATURE_NAMES]
+        return SHAPExplainer(model_ref, background, FEATURE_NAMES)
+    except Exception as exc:
+        logger.warning(f"Failed to build SHAP explainer: {exc}")
         return None
-
-    coef = np.asarray(getattr(core_model, "coef_"), dtype=float)
-    if coef.ndim > 1:
-        coef = coef[0]
-
-    transformed = features
-    if preprocessor is not None:
-        try:
-            transformed = preprocessor.transform(features)
-        except Exception:
-            return None
-
-    if coef.shape[0] != transformed.shape[1]:
-        return None
-
-    contrib = np.abs(transformed[0] * coef)
-    if np.allclose(contrib, 0):
-        return None
-
-    top_indices = np.argsort(contrib)[-3:][::-1]
-    return [{feature_names[idx]: float(contrib[idx])} for idx in top_indices]
 
 
 @app.exception_handler(RequestValidationError)
@@ -237,7 +262,7 @@ async def get_api_key(api_key_header: str = Security(api_key_header)):
 # --- Events ---
 @app.on_event("startup")
 async def load_model():
-    global model, model_metadata
+    global model, explainer, model_metadata
     try:
         if API_KEY is None and APP_ENV not in {"development", "dev", "test"}:
             raise RuntimeError("API_KEY must be set in non-development environments")
@@ -253,10 +278,33 @@ async def load_model():
                 model_metadata["version"] = "unknown"
             model_metadata["loaded_at"] = datetime.utcnow().isoformat()
             logger.info("ML Model loaded successfully")
+
+            explainer = _load_explainer(model)
+            if explainer is not None:
+                logger.info("SHAP explainer ready")
+            else:
+                logger.warning("SHAP explainer unavailable; predictions will omit top_contributors")
         else:
             logger.warning(f"Model file not found at {MODEL_PATH}. API starting in skeletal mode.")
     except Exception as e:
         logger.error(f"Failed to load model: {str(e)}")
+
+
+@app.on_event("startup")
+async def init_optional_db():
+    """Create accounts/report-history tables if a database is reachable.
+    This feature is entirely optional -- a missing/unreachable DB (e.g.
+    running the API standalone without the `db` compose service) only
+    disables /auth and /reports; it never blocks the core prediction API
+    from starting."""
+    try:
+        from ..db.database import engine
+        from ..db import models as db_models
+
+        db_models.Base.metadata.create_all(bind=engine)
+        logger.info("Accounts/report-history database ready")
+    except Exception as e:
+        logger.warning(f"Accounts/report-history database unavailable ({e}); /auth and /reports will fail until it is")
 
 
 # --- Endpoints ---
@@ -293,7 +341,7 @@ async def model_info():
 
 @app.post("/model/reload")
 async def model_reload():
-    global model
+    global model, explainer
     if not MODEL_PATH.exists():
         raise HTTPException(status_code=404, detail="Model file not found")
 
@@ -301,6 +349,7 @@ async def model_reload():
         model = joblib.load(MODEL_PATH)
         model_metadata["loaded"] = True
         model_metadata["loaded_at"] = datetime.utcnow().isoformat()
+        explainer = _load_explainer(model)
     return {"message": "Model reloaded", "metadata": model_metadata}
 
 
@@ -318,14 +367,24 @@ async def predict(req: PredictionRequest, request: Request):
         prediction = int(prediction_arr[0])
         confidence = float(confidence_arr[0])
 
+        top_contributors: Optional[List[Dict[str, float]]] = None
+        baseline_probability: Optional[float] = None
+        if explainer is not None:
+            top_contributors, baseline_probability = await asyncio.to_thread(explainer.explain, features)
+
+        risk_level = _risk_level(probability)
+        PREDICTIONS_BY_RISK_LEVEL.labels(risk_level=risk_level).inc()
+        PREDICTED_PROBABILITY.observe(probability)
+
         return PredictionResponse(
             prediction=prediction,
             probability=probability,
-            risk_level=_risk_level(probability),
+            risk_level=risk_level,
             confidence=confidence,
             timestamp=datetime.utcnow().isoformat(),
             request_id=request.state.request_id,
-            top_contributors=_build_explanations(features),
+            top_contributors=top_contributors,
+            baseline_probability=baseline_probability,
         )
 
     except Exception as e:
@@ -362,25 +421,31 @@ async def batch_predict(batch: BatchPredictionRequest):
                 request_id=request_id,
             )
 
-        matrix = np.array(
-            [[getattr(instance, feature) for feature in FEATURE_NAMES] for instance in valid_instances],
-            dtype=np.float64,
-        )
+        matrix = pd.concat([_to_feature_vector(instance) for instance in valid_instances], ignore_index=True)
         predictions, probabilities, confidences = await asyncio.to_thread(_model_predict, model_ref, matrix)
 
+        # Per-row SHAP explanations are intentionally skipped for batch requests:
+        # TreeExplainer/LinearExplainer are cheap, but the KernelExplainer fallback
+        # (used for non-tree/non-linear models) is O(n) expensive calls to the model
+        # per row, which would make a 100-row batch request unacceptably slow.
+        # Use /predict for per-row explanations.
         now = datetime.utcnow().isoformat()
-        results = [
-            PredictionResponse(
+        results = []
+        for idx in range(len(valid_instances)):
+            probability = float(probabilities[idx])
+            risk_level = _risk_level(probability)
+            PREDICTIONS_BY_RISK_LEVEL.labels(risk_level=risk_level).inc()
+            PREDICTED_PROBABILITY.observe(probability)
+            results.append(PredictionResponse(
                 prediction=int(predictions[idx]),
-                probability=float(probabilities[idx]),
-                risk_level=_risk_level(float(probabilities[idx])),
+                probability=probability,
+                risk_level=risk_level,
                 confidence=float(confidences[idx]),
                 timestamp=now,
                 request_id=request_id,
                 top_contributors=None,
-            )
-            for idx in range(len(valid_instances))
-        ]
+                baseline_probability=None,
+            ))
 
         return BatchPredictionResponse(
             predictions=results,

@@ -8,16 +8,16 @@ import { SiteFooter, SiteHeader } from "../components/SiteShell";
 const variableMap: Record<string, string> = {
   AGE: "Age contributes baseline vascular risk and calibration by decade.",
   SEX: "Sex-specific calibration changes baseline risk slope.",
-  SBP: "Systolic blood pressure strongly influences vascular event probability.",
-  LIPIDS: "Total and HDL cholesterol ratio informs atherosclerotic burden.",
-  DM: "Diabetes status materially shifts long-term risk upward.",
-  SMOKE: "Current smoking amplifies inflammatory and thrombotic pathways.",
+  BMI: "Body mass index (from height and weight) reflects long-term metabolic load.",
+  BP: "Systolic and diastolic blood pressure strongly influence vascular event probability.",
+  CHOL: "Cholesterol and glucose category inform atherosclerotic and metabolic burden.",
+  LIFESTYLE: "Smoking, alcohol intake, and physical activity are modifiable behavioral factors.",
 };
 
 export default function AboutPage() {
   const [activeVar, setActiveVar] = useState<keyof typeof variableMap>("AGE");
   const formula = useMemo(
-    () => ["AGE", "SEX", "SBP", "LIPIDS", "DM", "SMOKE"] as Array<keyof typeof variableMap>,
+    () => ["AGE", "SEX", "BMI", "BP", "CHOL", "LIFESTYLE"] as Array<keyof typeof variableMap>,
     [],
   );
 
@@ -60,21 +60,31 @@ export default function AboutPage() {
               <Microscope size={18} />
               <div>
                 <strong>Model Accuracy Snapshot</strong>
-                <p>AUC: 0.86 | Calibration slope: 0.97 | Validation cohort: 8,000+ participants.</p>
+                <p>
+                  ROC-AUC: 0.79 | Accuracy: 72% | Trained on 70,000 records from the public Kaggle cardiovascular
+                  disease dataset (49,000 train / 21,000 held-out test). See the model card for the full breakdown.
+                </p>
               </div>
             </div>
             <div className="info-row">
               <Stethoscope size={18} />
               <div>
                 <strong>Limitations</strong>
-                <p>Does not directly include inflammatory markers, sleep quality, psychosocial stress, or imaging.</p>
+                <p>
+                  This is a lifestyle risk-screening model, not a diagnostic tool -- it uses self-reportable factors
+                  (age, sex, BMI, blood pressure, cholesterol/glucose category, smoking, alcohol, activity) and does
+                  not include ECG, imaging, lab-confirmed lipid panels, or family history.
+                </p>
               </div>
             </div>
             <div className="info-row">
               <ShieldCheck size={18} />
               <div>
-                <strong>Team Credentials</strong>
-                <p>Built by a multidisciplinary team spanning ML engineering, preventive cardiology, and UX research.</p>
+                <strong>Explainability</strong>
+                <p>
+                  Every prediction is accompanied by real SHAP (SHapley Additive exPlanations) values showing which
+                  factors pushed your risk estimate up or down, not just a static list of &quot;important&quot; features.
+                </p>
               </div>
             </div>
           </div>
@@ -83,12 +93,12 @@ export default function AboutPage() {
             <h2 className="type-h3">References (APA)</h2>
             <div className="reference-list">
               <p>
-                Goff, D. C., Lloyd-Jones, D. M., Bennett, G., et al. (2014). 2013 ACC/AHA guideline on the assessment
-                of cardiovascular risk. <em>Circulation, 129</em>(25 Suppl 2), S49-S73.
+                Ulianova, S. (2019). Cardiovascular Disease dataset [Data set]. Kaggle.
+                https://www.kaggle.com/datasets/sulianova/cardiovascular-disease-dataset
               </p>
               <p>
-                D&apos;Agostino, R. B., Vasan, R. S., Pencina, M. J., et al. (2008). General cardiovascular risk profile
-                for use in primary care. <em>Circulation, 117</em>(6), 743-753.
+                Lundberg, S. M., &amp; Lee, S.-I. (2017). A unified approach to interpreting model predictions.
+                <em> Advances in Neural Information Processing Systems, 30</em>.
               </p>
               <p>
                 World Health Organization. (2025). Cardiovascular diseases fact sheet.

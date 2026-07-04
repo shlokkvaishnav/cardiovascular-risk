@@ -68,6 +68,7 @@ describe("Risk Assessment Logic", () => {
       onBpMedication: false,
       unknownVitals: {
         systolicBp: true,
+        diastolicBp: true,
         totalCholesterol: true,
         hdlCholesterol: true,
       }

@@ -18,31 +18,30 @@ class DataValidator:
         self.validation_rules = self._define_validation_rules()
         
     def _define_validation_rules(self) -> Dict[str, Dict]:
-        """Define validation rules for each feature"""
+        """Define validation rules for each feature, driven entirely by
+        `preprocessing.numerical_features` / `categorical_features` and
+        `validation.ranges` in config.yaml -- so switching datasets (e.g. the
+        UCI heart disease set vs. the Kaggle cardiovascular lifestyle set)
+        only requires a config change, not a code change here."""
         ranges = self.config.get("validation", {}).get("ranges", {})
-        def rng(name: str, default_min: float, default_max: float) -> Dict[str, float]:
+
+        def rng(name: str) -> Dict[str, float]:
             values = ranges.get(name, {})
             return {
-                "min": values.get("min", default_min),
-                "max": values.get("max", default_max)
+                "min": values.get("min", float("-inf")),
+                "max": values.get("max", float("inf")),
             }
 
-        return {
-            'age': {'type': 'numeric', **rng('age', 0, 120)},
-            'sex': {'type': 'categorical', **rng('sex', 0, 1)},
-            'cp': {'type': 'categorical', **rng('cp', 0, 3)},
-            'trestbps': {'type': 'numeric', **rng('trestbps', 80, 200)},
-            'chol': {'type': 'numeric', **rng('chol', 100, 600)},
-            'fbs': {'type': 'categorical', **rng('fbs', 0, 1)},
-            'restecg': {'type': 'categorical', **rng('restecg', 0, 2)},
-            'thalach': {'type': 'numeric', **rng('thalach', 60, 220)},
-            'exang': {'type': 'categorical', **rng('exang', 0, 1)},
-            'oldpeak': {'type': 'numeric', **rng('oldpeak', 0, 10)},
-            'slope': {'type': 'categorical', **rng('slope', 0, 2)},
-            'ca': {'type': 'categorical', **rng('ca', 0, 4)},
-            'thal': {'type': 'categorical', **rng('thal', 0, 3)},
-            'target': {'type': 'categorical', **rng('target', 0, 1)}
+        preprocessing = self.config.get("preprocessing", {})
+        numerical = preprocessing.get("numerical_features", [])
+        categorical = preprocessing.get("categorical_features", [])
+
+        rules: Dict[str, Dict] = {name: {"type": "numeric", **rng(name)} for name in numerical}
+        rules.update({name: {"type": "categorical", **rng(name)} for name in categorical})
+        rules["target"] = {"type": "categorical", **rng("target")} if "target" in ranges else {
+            "type": "categorical", "min": 0, "max": 1
         }
+        return rules
     
     def validate_dataframe(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
         """

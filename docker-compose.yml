@@ -1,18 +1,43 @@
-version: '3.8'
-
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: cardiovascular-risk-db
+    environment:
+      - POSTGRES_USER=cardio
+      - POSTGRES_PASSWORD=cardio
+      - POSTGRES_DB=cardio
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U cardio -d cardio" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build: ./backend
     container_name: cardiovascular-risk-api
     ports:
       - "8000:8000"
     volumes:
-      - ./backend/models:/app/models
+      # Do NOT bind-mount ./backend/models: the trained model is baked into
+      # the image at build time (see Dockerfile), and mounting the host's
+      # (empty, .gitkeep-only) models/ directory here would shadow it,
+      # forcing the API into skeletal mode.
       - ./backend/config:/app/config
       - ./backend/logs:/app/logs
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO
+      - DATABASE_URL=postgresql+psycopg://cardio:cardio@db:5432/cardio
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-insecure-secret-change-in-production}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
@@ -20,27 +45,56 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-  # Optional: Add monitoring with Prometheus
-  # prometheus:
-  #   image: prom/prometheus:latest
-  #   container_name: prometheus
-  #   ports:
-  #     - "9090:9090"
-  #   volumes:
-  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-  #   command:
-  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  web:
+    build:
+      context: ./apps/web
+      args:
+        # Resolved server-side inside the Next.js rewrite proxy (next.config.ts),
+        # so the Docker-internal service name works here -- the browser never
+        # talks to this URL directly, only to the Next.js server's own origin.
+        NEXT_PUBLIC_API_URL: http://api:8000
+        NEXT_PUBLIC_API_KEY: ${API_KEY:-dev-api-key}
+    container_name: cardiovascular-risk-web
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # Optional: Add Grafana for visualization
-  # grafana:
-  #   image: grafana/grafana:latest
-  #   container_name: grafana
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - GF_SECURITY_ADMIN_PASSWORD=admin
-  #   volumes:
-  #     - grafana-storage:/var/lib/grafana
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cardiovascular-risk-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # volumes:
-  #   grafana-storage:
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cardiovascular-risk-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-storage:

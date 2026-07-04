@@ -1,0 +1,17 @@
+# Railway service config for the Next.js frontend.
+# In the Railway dashboard: create a service from this repo with
+# Root Directory = "apps/web" so it picks up this file and the Dockerfile
+# alongside it.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Required build args (set as this service's variables in the Railway
+# dashboard -- Railway passes matching variable names through as Docker
+# build args automatically when referenced in the Dockerfile's ARG list):
+#   NEXT_PUBLIC_API_URL -- the backend service's public Railway URL
+#   NEXT_PUBLIC_API_KEY -- must match the backend's API_KEY

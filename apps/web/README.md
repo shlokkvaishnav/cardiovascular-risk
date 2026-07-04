@@ -5,10 +5,13 @@ Next.js App Router frontend for the Cardiovascular Risk Platform.
 ## Routes
 
 - `/` Home
-- `/assess` 7-step guided assessment wizard
-- `/results` interactive risk dashboard
+- `/assess` 7-step guided assessment wizard (supports uploading a lab report to auto-fill)
+- `/results` interactive risk dashboard (heuristic preview → real SHAP-explained model result)
 - `/about` methodology details
 - `/privacy` data policy
+- `/login` / `/register` optional account creation
+- `/dashboard` saved report history + risk trend (requires login)
+- `/dashboard/reports/[id]` saved report detail + PDF export
 
 ## Stack
 
@@ -46,13 +49,13 @@ npm run start
 - `app/lib/risk.ts`
 - `app/globals.css`
 
-## Deployment (Vercel)
+## Containerization
 
-This is a monorepo sub-app. Set project Root Directory to:
+This app is containerized (`Dockerfile`, using Next.js `output: 'standalone'`) rather than
+deployed to Vercel, so the whole stack (frontend + backend + Postgres) can run as one
+docker-compose project or as sibling services on the same host.
 
-```txt
-apps/web
-```
-
-Do not use `web` as root directory.
+`NEXT_PUBLIC_*` environment variables are baked in at Docker build time (not read at
+runtime), so `NEXT_PUBLIC_API_URL` must be passed as a `--build-arg`, not just set on the
+running container.
 

@@ -4,7 +4,13 @@ project:
   random_seed: 42
 
 data:
-  raw_path: data/raw/heart_disease_uci.csv
+  # Kaggle "Cardiovascular Disease dataset" (sulianova) -- ~70,000 patient
+  # records, semicolon-delimited, lifestyle/behavioral features that overlap
+  # with what the frontend wizard collects. Superseded the smaller (~920-row)
+  # UCI heart_disease_uci.csv as the primary training set; that file is kept
+  # in data/raw/ for reference/comparison but is no longer the default.
+  raw_path: data/raw/cardio_train.csv
+  raw_delimiter: ";"
   processed_path: data/processed/
   test_size: 0.3
   validation_size: 0.2
@@ -12,19 +18,18 @@ data:
 preprocessing:
   numerical_features:
     - age
-    - trestbps
-    - chol
-    - thalach
-    - oldpeak
-    - ca
+    - height
+    - weight
+    - bmi
+    - ap_hi
+    - ap_lo
   categorical_features:
     - sex
-    - cp
-    - fbs
-    - restecg
-    - exang
-    - slope
-    - thal
+    - cholesterol
+    - gluc
+    - smoke
+    - alco
+    - active
   imputation_strategy:
     numerical: median
     categorical: most_frequent
@@ -35,21 +40,20 @@ training:
   metrics: ['accuracy', 'f1', 'roc_auc']
   
 mlflow:
-  tracking_uri: ./mlruns
+  tracking_uri: sqlite:///mlflow.db
   experiment_name: cardiovascular_risk_baseline
 
 validation:
   ranges:
-    age: { min: 1, max: 120 }
+    age: { min: 18, max: 100 }
     sex: { min: 0, max: 1 }
-    cp: { min: 0, max: 3 }
-    trestbps: { min: 50, max: 300 }
-    chol: { min: 50, max: 800 }
-    fbs: { min: 0, max: 1 }
-    restecg: { min: 0, max: 2 }
-    thalach: { min: 30, max: 250 }
-    exang: { min: 0, max: 1 }
-    oldpeak: { min: 0, max: 10 }
-    slope: { min: 0, max: 2 }
-    ca: { min: 0, max: 4 }
-    thal: { min: 0, max: 3 }
+    height: { min: 120, max: 220 }
+    weight: { min: 30, max: 250 }
+    bmi: { min: 12, max: 80 }
+    ap_hi: { min: 70, max: 240 }
+    ap_lo: { min: 40, max: 160 }
+    cholesterol: { min: 1, max: 3 }
+    gluc: { min: 1, max: 3 }
+    smoke: { min: 0, max: 1 }
+    alco: { min: 0, max: 1 }
+    active: { min: 0, max: 1 }

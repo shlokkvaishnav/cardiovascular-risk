@@ -12,7 +12,7 @@ def sample_data():
 def config():
     return {
         'training': {'cv_folds': 3, 'n_jobs': 1},
-        'mlflow': {'tracking_uri': './test_mlruns', 'experiment_name': 'test'}
+        'mlflow': {'tracking_uri': 'sqlite:///test_mlflow.db', 'experiment_name': 'test'}
     }
 
 def test_model_training(sample_data, config):

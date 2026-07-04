@@ -2,7 +2,7 @@
 API schemas and validation models
 Centralized location for all Pydantic models
 """
-from pydantic import BaseModel, Field, field_validator, ValidationInfo, model_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Dict, Any
 from enum import Enum
 from pathlib import Path
@@ -33,68 +33,51 @@ class RiskLevel(str, Enum):
 
 class PredictionRequest(BaseModel):
     """
-    Request model for heart disease prediction with medical reality checks.
-    Ranges are widened to accept medically possible extreme values while rejecting physical impossibilities.
+    Request model for cardiovascular risk prediction, based on the Kaggle
+    cardiovascular lifestyle dataset's 11 features (age, sex, BMI inputs,
+    blood pressure, cholesterol/glucose category, and lifestyle factors).
+    Ranges are widened to accept medically possible extreme values while
+    rejecting physical impossibilities. BMI is derived server-side from
+    height/weight rather than accepted directly, to avoid client/server
+    disagreement about the derived value.
     """
-    age: float = Field(..., ge=_rng("age", 1, 120)["min"], le=_rng("age", 1, 120)["max"], description="Age in years")
+    age: float = Field(..., ge=_rng("age", 18, 100)["min"], le=_rng("age", 18, 100)["max"], description="Age in years")
     sex: int = Field(..., ge=_rng("sex", 0, 1)["min"], le=_rng("sex", 0, 1)["max"], description="Sex (0: female, 1: male)")
-    cp: float = Field(..., ge=_rng("cp", 0, 3)["min"], le=_rng("cp", 0, 3)["max"], description="Chest pain type")
-    trestbps: float = Field(..., ge=_rng("trestbps", 50, 300)["min"], le=_rng("trestbps", 50, 300)["max"], description="Resting blood pressure (mm Hg)")
-    chol: float = Field(..., ge=_rng("chol", 50, 800)["min"], le=_rng("chol", 50, 800)["max"], description="Serum cholesterol (mg/dl)")
-    fbs: int = Field(..., ge=_rng("fbs", 0, 1)["min"], le=_rng("fbs", 0, 1)["max"], description="Fasting blood sugar > 120 mg/dl (0: false, 1: true)")
-    restecg: float = Field(..., ge=_rng("restecg", 0, 2)["min"], le=_rng("restecg", 0, 2)["max"], description="Resting ECG results")
-    thalach: float = Field(..., ge=_rng("thalach", 30, 250)["min"], le=_rng("thalach", 30, 250)["max"], description="Maximum heart rate achieved")
-    exang: int = Field(..., ge=_rng("exang", 0, 1)["min"], le=_rng("exang", 0, 1)["max"], description="Exercise induced angina (0: no, 1: yes)")
-    oldpeak: float = Field(..., ge=_rng("oldpeak", 0, 10)["min"], le=_rng("oldpeak", 0, 10)["max"], description="ST depression")
-    slope: float = Field(..., ge=_rng("slope", 0, 2)["min"], le=_rng("slope", 0, 2)["max"], description="Slope of peak exercise ST segment")
-    ca: float = Field(..., ge=_rng("ca", 0, 4)["min"], le=_rng("ca", 0, 4)["max"], description="Number of major vessels")
-    thal: float = Field(..., ge=_rng("thal", 0, 3)["min"], le=_rng("thal", 0, 3)["max"], description="Thalassemia")
+    height: float = Field(..., ge=_rng("height", 120, 220)["min"], le=_rng("height", 120, 220)["max"], description="Height (cm)")
+    weight: float = Field(..., ge=_rng("weight", 30, 250)["min"], le=_rng("weight", 30, 250)["max"], description="Weight (kg)")
+    ap_hi: float = Field(..., ge=_rng("ap_hi", 70, 240)["min"], le=_rng("ap_hi", 70, 240)["max"], description="Systolic blood pressure (mm Hg)")
+    ap_lo: float = Field(..., ge=_rng("ap_lo", 40, 160)["min"], le=_rng("ap_lo", 40, 160)["max"], description="Diastolic blood pressure (mm Hg)")
+    cholesterol: int = Field(..., ge=_rng("cholesterol", 1, 3)["min"], le=_rng("cholesterol", 1, 3)["max"], description="Cholesterol level (1: normal, 2: above normal, 3: well above normal)")
+    gluc: int = Field(..., ge=_rng("gluc", 1, 3)["min"], le=_rng("gluc", 1, 3)["max"], description="Glucose level (1: normal, 2: above normal, 3: well above normal)")
+    smoke: int = Field(..., ge=_rng("smoke", 0, 1)["min"], le=_rng("smoke", 0, 1)["max"], description="Current smoker (0: no, 1: yes)")
+    alco: int = Field(..., ge=_rng("alco", 0, 1)["min"], le=_rng("alco", 0, 1)["max"], description="Alcohol intake (0: no, 1: yes)")
+    active: int = Field(..., ge=_rng("active", 0, 1)["min"], le=_rng("active", 0, 1)["max"], description="Physically active (0: no, 1: yes)")
 
     @model_validator(mode="after")
     def validate_hemodynamic_consistency(self) -> "PredictionRequest":
-        """Cross-field plausibility checks for medical safety."""
-        pulse_pressure = self.trestbps - self.oldpeak * 10
-        if pulse_pressure < 30:
-            raise ValueError("Hemodynamic pattern is inconsistent: very low inferred pulse pressure")
-
-        if self.age < 18 and self.ca > 2:
-            raise ValueError("Major vessel count is implausible for pediatric age")
-
+        """Cross-field plausibility check for medical safety: systolic must
+        meaningfully exceed diastolic blood pressure."""
+        if self.ap_hi - self.ap_lo < 10:
+            raise ValueError(
+                "Hemodynamic pattern is inconsistent: systolic blood pressure "
+                "must be at least 10 mmHg above diastolic"
+            )
         return self
-    
-    @field_validator('thalach')
-    @classmethod
-    def validate_heart_rate(cls, v: float, info: ValidationInfo) -> float:
-        """Validate heart rate is reasonable for age"""
-        if not info.data:
-            return v
-            
-        age = info.data.get('age')
-        if age is not None:
-            # Theoretical max heart rate is approx 220 - age.
-            # We allow significant margin (10%) for outliers.
-            max_hr = 220 - age
-            limit = max_hr * 1.1
-            if v > limit:
-                raise ValueError(f'Heart rate {v} seems too high for age {age} (Max expected ~{int(limit)})')
-        return v
-    
+
     class Config:
         json_schema_extra = {
             "example": {
-                "age": 63,
+                "age": 58,
                 "sex": 1,
-                "cp": 3,
-                "trestbps": 145,
-                "chol": 233,
-                "fbs": 1,
-                "restecg": 0,
-                "thalach": 150,
-                "exang": 0,
-                "oldpeak": 2.3,
-                "slope": 0,
-                "ca": 0,
-                "thal": 1
+                "height": 175,
+                "weight": 85,
+                "ap_hi": 145,
+                "ap_lo": 90,
+                "cholesterol": 2,
+                "gluc": 1,
+                "smoke": 0,
+                "alco": 0,
+                "active": 1
             }
         }
 
@@ -108,7 +91,15 @@ class PredictionResponse(BaseModel):
     request_id: Optional[str] = Field(None, description="Unique trace ID for the request")
     top_contributors: Optional[List[Dict[str, float]]] = Field(
         default=None,
-        description="Top features influencing the prediction (proxy explanation)."
+        description="Top features driving this prediction, as signed SHAP values "
+        "(positive increases predicted risk, negative is protective). None if "
+        "no explainer is available for the loaded model or explanation failed."
+    )
+    baseline_probability: Optional[float] = Field(
+        default=None,
+        description="SHAP expected value: the model's average predicted probability "
+        "over the background dataset, i.e. the starting point before this patient's "
+        "specific feature values are applied."
     )
 
 class BatchPredictionRequest(BaseModel):

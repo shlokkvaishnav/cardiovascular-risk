@@ -7,10 +7,14 @@ export type AssessmentData = {
   age: number | null;
   sex: Sex | null;
   systolicBp: number | null;
+  diastolicBp: number | null;
   totalCholesterol: number | null;
   hdlCholesterol: number | null;
+  heightCm: number | null;
+  weightKg: number | null;
   smoking: boolean | null;
   smokingStatus: SmokingStatus | null;
+  alcohol: boolean | null;
   activityLevel: ActivityLevel | null;
   diabetes: boolean | null;
   familyHistory: boolean | null;
@@ -18,6 +22,7 @@ export type AssessmentData = {
   onBpMedication: boolean | null;
   unknownVitals: {
     systolicBp: boolean;
+    diastolicBp: boolean;
     totalCholesterol: boolean;
     hdlCholesterol: boolean;
   };
@@ -46,10 +51,14 @@ export function createEmptyAssessment(): AssessmentData {
     age: null,
     sex: null,
     systolicBp: null,
+    diastolicBp: null,
     totalCholesterol: null,
     hdlCholesterol: null,
+    heightCm: null,
+    weightKg: null,
     smoking: null,
     smokingStatus: null,
+    alcohol: null,
     activityLevel: null,
     diabetes: null,
     familyHistory: null,
@@ -57,6 +66,7 @@ export function createEmptyAssessment(): AssessmentData {
     onBpMedication: null,
     unknownVitals: {
       systolicBp: false,
+      diastolicBp: false,
       totalCholesterol: false,
       hdlCholesterol: false,
     },

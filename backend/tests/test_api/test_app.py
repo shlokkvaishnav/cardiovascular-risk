@@ -15,7 +15,7 @@ client = TestClient(app)
 
 class TestHealthEndpoints:
     """Test health and info endpoints"""
-    
+
     def test_root_endpoint(self):
         """Test root endpoint returns API info"""
         response = client.get("/")
@@ -24,7 +24,7 @@ class TestHealthEndpoints:
         assert "message" in data
         assert "version" in data
         assert "endpoints" in data
-    
+
     def test_health_check(self):
         """Test health check endpoint"""
         response = client.get("/health")
@@ -33,7 +33,7 @@ class TestHealthEndpoints:
         assert "status" in data
         assert "model_loaded" in data
         assert "timestamp" in data
-    
+
     def test_model_info(self):
         """Test model info endpoint"""
         response = client.get("/model/info")
@@ -41,34 +41,32 @@ class TestHealthEndpoints:
         data = response.json()
         assert "loaded" in data
         assert "features" in data
-        assert len(data["features"]) == 13
+        assert len(data["features"]) == 12
 
 class TestPredictionEndpoints:
     """Test prediction endpoints"""
-    
+
     @pytest.fixture
     def valid_request_data(self):
-        """Valid prediction request data"""
+        """Valid prediction request data (Kaggle cardiovascular lifestyle schema)"""
         return {
-            "age": 63,
+            "age": 58,
             "sex": 1,
-            "cp": 3,
-            "trestbps": 145,
-            "chol": 233,
-            "fbs": 1,
-            "restecg": 0,
-            "thalach": 150,
-            "exang": 0,
-            "oldpeak": 2.3,
-            "slope": 0,
-            "ca": 0,
-            "thal": 1
+            "height": 175,
+            "weight": 85,
+            "ap_hi": 145,
+            "ap_lo": 90,
+            "cholesterol": 2,
+            "gluc": 1,
+            "smoke": 0,
+            "alco": 0,
+            "active": 1
         }
-    
+
     def test_predict_valid_request(self, valid_request_data):
         """Test prediction with valid data"""
         response = client.post("/predict", json=valid_request_data, headers={"X-API-Key": "dev-api-key"})
-        
+
         # May return 503 if model not loaded, which is acceptable
         if response.status_code == 503:
             assert "Model is not loaded" in response.json()["detail"]
@@ -82,64 +80,91 @@ class TestPredictionEndpoints:
             assert data["prediction"] in [0, 1]
             assert 0 <= data["probability"] <= 1
             assert data["risk_level"] in ["Low", "Medium", "High"]
-    
+
+    def test_predict_returns_signed_shap_contributors(self, valid_request_data):
+        """Regression test: /predict must return non-null, signed SHAP
+        contributions regardless of which model type won training (the old
+        coefficient-proxy explanation silently returned None for
+        RandomForest/SVM -- this is the literal bug that was fixed)."""
+        response = client.post("/predict", json=valid_request_data, headers={"X-API-Key": "dev-api-key"})
+
+        if response.status_code == 503:
+            pytest.skip("Model not loaded in this environment")
+
+        data = response.json()
+        assert data["top_contributors"] is not None
+        assert len(data["top_contributors"]) > 0
+        assert data["baseline_probability"] is not None
+        # At least one contribution should carry a sign (not all-zero/abs-only)
+        values = [v for entry in data["top_contributors"] for v in entry.values()]
+        assert any(v != 0 for v in values)
+
     def test_predict_invalid_age(self, valid_request_data):
         """Test prediction with invalid age"""
         invalid_data = valid_request_data.copy()
         invalid_data["age"] = 150  # Invalid age
-        
+
         response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code == 422  # Validation error
-    
+
     def test_predict_missing_field(self, valid_request_data):
         """Test prediction with missing required field"""
         incomplete_data = valid_request_data.copy()
         del incomplete_data["age"]
-        
+
         response = client.post("/predict", json=incomplete_data, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code == 422
-    
+
     def test_predict_invalid_type(self, valid_request_data):
         """Test prediction with invalid data type"""
         invalid_data = valid_request_data.copy()
         invalid_data["age"] = "not a number"
-        
+
         response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code == 422
-    
+
     def test_predict_out_of_range_values(self, valid_request_data):
         """Test prediction with out of range values"""
         invalid_data = valid_request_data.copy()
-        invalid_data["chol"] = 1000  # Too high
-        
+        invalid_data["weight"] = 1000  # Too high
+
+        response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
+        assert response.status_code == 422
+
+    def test_predict_inconsistent_blood_pressure(self, valid_request_data):
+        """Systolic must meaningfully exceed diastolic"""
+        invalid_data = valid_request_data.copy()
+        invalid_data["ap_hi"] = 80
+        invalid_data["ap_lo"] = 90
+
         response = client.post("/predict", json=invalid_data, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code == 422
 
 class TestBatchPrediction:
     """Test batch prediction endpoint"""
-    
+
     @pytest.fixture
     def valid_batch_request(self):
         """Valid batch prediction request"""
         return {
             "instances": [
                 {
-                    "age": 63, "sex": 1, "cp": 3, "trestbps": 145,
-                    "chol": 233, "fbs": 1, "restecg": 0, "thalach": 150,
-                    "exang": 0, "oldpeak": 2.3, "slope": 0, "ca": 0, "thal": 1
+                    "age": 58, "sex": 1, "height": 175, "weight": 85,
+                    "ap_hi": 145, "ap_lo": 90, "cholesterol": 2, "gluc": 1,
+                    "smoke": 0, "alco": 0, "active": 1
                 },
                 {
-                    "age": 45, "sex": 0, "cp": 1, "trestbps": 120,
-                    "chol": 200, "fbs": 0, "restecg": 0, "thalach": 170,
-                    "exang": 0, "oldpeak": 0.5, "slope": 1, "ca": 0, "thal": 2
+                    "age": 45, "sex": 0, "height": 165, "weight": 60,
+                    "ap_hi": 110, "ap_lo": 70, "cholesterol": 1, "gluc": 1,
+                    "smoke": 0, "alco": 0, "active": 1
                 }
             ]
         }
-    
+
     def test_batch_predict_valid(self, valid_batch_request):
         """Test batch prediction with valid data"""
         response = client.post("/batch-predict", json=valid_batch_request, headers={"X-API-Key": "dev-api-key"})
-        
+
         # May return 503 if model not loaded
         if response.status_code == 503:
             assert "Model is not loaded" in response.json()["detail"]
@@ -149,32 +174,32 @@ class TestBatchPrediction:
             assert "predictions" in data
             assert "total" in data
             assert "timestamp" in data
-    
+
     def test_batch_predict_empty_list(self):
         """Test batch prediction with empty instances list"""
         response = client.post("/batch-predict", json={"instances": []}, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code == 422
-    
+
     def test_batch_predict_too_many_instances(self):
         """Test batch prediction with too many instances"""
         instances = [
             {
-                "age": 63, "sex": 1, "cp": 3, "trestbps": 145,
-                "chol": 233, "fbs": 1, "restecg": 0, "thalach": 150,
-                "exang": 0, "oldpeak": 2.3, "slope": 0, "ca": 0, "thal": 1
+                "age": 58, "sex": 1, "height": 175, "weight": 85,
+                "ap_hi": 145, "ap_lo": 90, "cholesterol": 2, "gluc": 1,
+                "smoke": 0, "alco": 0, "active": 1
             }
         ] * 101  # More than max allowed (100)
-        
+
         response = client.post("/batch-predict", json={"instances": instances}, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code == 422
 
 class TestModelManagement:
     """Test model management endpoints"""
-    
+
     def test_model_reload(self):
         """Test model reload endpoint"""
         response = client.post("/model/reload")
-        
+
         # May return 404 if model file doesn't exist, which is acceptable
         if response.status_code == 404:
             assert "Model file not found" in response.json()["detail"]
@@ -186,12 +211,12 @@ class TestModelManagement:
 
 class TestErrorHandling:
     """Test error handling"""
-    
+
     def test_invalid_endpoint(self):
         """Test accessing invalid endpoint"""
         response = client.get("/invalid-endpoint")
         assert response.status_code == 404
-    
+
     def test_invalid_method(self):
         """Test using wrong HTTP method"""
         response = client.get("/predict")  # Should be POST
@@ -199,39 +224,26 @@ class TestErrorHandling:
 
 class TestRequestValidation:
     """Test comprehensive request validation"""
-    
-    def test_heart_rate_validation(self):
-        """Test heart rate validation based on age"""
-        # Heart rate too high for age
-        data = {
-            "age": 70, "sex": 1, "cp": 3, "trestbps": 145,
-            "chol": 233, "fbs": 1, "restecg": 0, "thalach": 200,  # Too high for age 70
-            "exang": 0, "oldpeak": 2.3, "slope": 0, "ca": 0, "thal": 1
-        }
-        
-        response = client.post("/predict", json=data, headers={"X-API-Key": "dev-api-key"})
-        # Should either validate or return 422
-        assert response.status_code in [200, 422, 503]
-    
+
     def test_boundary_values(self):
         """Test boundary values for all fields"""
         # Minimum valid values
         min_data = {
-            "age": 1, "sex": 0, "cp": 0, "trestbps": 80,
-            "chol": 100, "fbs": 0, "restecg": 0, "thalach": 60,
-            "exang": 0, "oldpeak": 0, "slope": 0, "ca": 0, "thal": 0
+            "age": 18, "sex": 0, "height": 120, "weight": 30,
+            "ap_hi": 90, "ap_lo": 70, "cholesterol": 1, "gluc": 1,
+            "smoke": 0, "alco": 0, "active": 0
         }
-        
+
         response = client.post("/predict", json=min_data, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code in [200, 503]  # 503 if model not loaded
-        
+
         # Maximum valid values
         max_data = {
-            "age": 120, "sex": 1, "cp": 3, "trestbps": 200,
-            "chol": 600, "fbs": 1, "restecg": 2, "thalach": 220,
-            "exang": 1, "oldpeak": 10, "slope": 2, "ca": 4, "thal": 3
+            "age": 100, "sex": 1, "height": 220, "weight": 250,
+            "ap_hi": 240, "ap_lo": 160, "cholesterol": 3, "gluc": 3,
+            "smoke": 1, "alco": 1, "active": 1
         }
-        
+
         response = client.post("/predict", json=max_data, headers={"X-API-Key": "dev-api-key"})
         assert response.status_code in [200, 503]
 

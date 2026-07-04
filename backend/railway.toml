@@ -1,0 +1,20 @@
+# Railway service config for the FastAPI backend.
+# In the Railway dashboard: create a service from this repo with
+# Root Directory = "backend" so it picks up this file and the Dockerfile
+# alongside it.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+# Required environment variables (set in the Railway dashboard, not here):
+#   DATABASE_URL   -- reference Railway's managed Postgres plugin variable,
+#                     e.g. ${{Postgres.DATABASE_URL}}
+#   JWT_SECRET_KEY -- a real random secret
+#   API_KEY        -- a real random secret (protects /predict)
+#   GROQ_API_KEY   -- optional, enables the document-upload feature
