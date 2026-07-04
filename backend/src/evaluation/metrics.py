@@ -308,7 +308,9 @@ Classification Metrics:
         if "roc_auc" in metrics:
             summary += f"  - ROC-AUC:    {metrics['roc_auc']:.4f}\n"
         if "brier_score" in metrics:
-            summary += f"  - Brier Score: {metrics['brier_score']:.4f} (lower is better)\n"
+            summary += (
+                f"  - Brier Score: {metrics['brier_score']:.4f} (lower is better)\n"
+            )
 
         summary += f"""
 Confusion Matrix:

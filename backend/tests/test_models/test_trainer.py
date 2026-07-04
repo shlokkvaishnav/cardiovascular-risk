@@ -46,8 +46,18 @@ def tabular_config():
         "data": {"test_size": 0.3},
         "preprocessing": {
             "numerical_features": ["age", "height", "weight", "ap_hi", "ap_lo"],
-            "categorical_features": ["sex", "cholesterol", "gluc", "smoke", "alco", "active"],
-            "imputation_strategy": {"numerical": "median", "categorical": "most_frequent"},
+            "categorical_features": [
+                "sex",
+                "cholesterol",
+                "gluc",
+                "smoke",
+                "alco",
+                "active",
+            ],
+            "imputation_strategy": {
+                "numerical": "median",
+                "categorical": "most_frequent",
+            },
         },
         "training": {
             "cv_folds": 3,
@@ -134,7 +144,9 @@ def test_select_best_breaks_near_ties_with_tie_breaker(base_config):
     assert trainer._select_best(results) == "B"
 
 
-def test_train_all_models_uses_candidate_models_from_config(tabular_config, tabular_data, tmp_path):
+def test_train_all_models_uses_candidate_models_from_config(
+    tabular_config, tabular_data, tmp_path
+):
     tabular_config["training"]["candidate_models"] = ["LogisticRegression"]
     X, y = tabular_data
     engineer = FeatureEngineer(tabular_config)
@@ -159,9 +171,15 @@ def test_train_all_models_selects_by_roc_auc(tabular_config, tabular_data, tmp_p
     assert (tmp_path / "shap_background.pkl").exists()
 
 
-def test_train_all_models_calibrates_best_model_when_enabled(tabular_config, tabular_data, tmp_path):
+def test_train_all_models_calibrates_best_model_when_enabled(
+    tabular_config, tabular_data, tmp_path
+):
     tabular_config["training"]["candidate_models"] = ["LogisticRegression"]
-    tabular_config["training"]["calibration"] = {"enabled": True, "method": "sigmoid", "cv": 3}
+    tabular_config["training"]["calibration"] = {
+        "enabled": True,
+        "method": "sigmoid",
+        "cv": 3,
+    }
     X, y = tabular_data
     engineer = FeatureEngineer(tabular_config)
     preprocessor = engineer.build_preprocessor()
@@ -226,15 +244,25 @@ def test_train_stacking_produces_fitted_stacking_classifier(
 
     fitted_pipelines = {
         "LogisticRegression": Pipeline(
-            [("preprocessor", preprocessor), ("model", LogisticRegression(max_iter=1000))]
+            [
+                ("preprocessor", preprocessor),
+                ("model", LogisticRegression(max_iter=1000)),
+            ]
         ).fit(X, y),
         "RandomForest": Pipeline(
-            [("preprocessor", preprocessor), ("model", RandomForestClassifier(n_estimators=20, random_state=42))]
+            [
+                ("preprocessor", preprocessor),
+                ("model", RandomForestClassifier(n_estimators=20, random_state=42)),
+            ]
         ).fit(X, y),
     }
     results = {}
     trainer._train_stacking(
-        fitted_pipelines, X, y, results, ["LogisticRegression", "RandomForest", "Stacking"]
+        fitted_pipelines,
+        X,
+        y,
+        results,
+        ["LogisticRegression", "RandomForest", "Stacking"],
     )
 
     assert "Stacking" in results

@@ -205,7 +205,9 @@ class WeightedContributionExplainer:
     disclosed explicitly in MODEL_CARD.md rather than presented as exact.
     """
 
-    def __init__(self, stacking_model: Any, background: Any, raw_feature_names: List[str]):
+    def __init__(
+        self, stacking_model: Any, background: Any, raw_feature_names: List[str]
+    ):
         self.raw_feature_names = list(raw_feature_names)
         self._is_kernel = False
 
@@ -222,7 +224,9 @@ class WeightedContributionExplainer:
         self.weights = self._compute_weights(stacking_model, base_names)
 
     @staticmethod
-    def _compute_weights(stacking_model: Any, base_names: List[str]) -> Dict[str, float]:
+    def _compute_weights(
+        stacking_model: Any, base_names: List[str]
+    ) -> Dict[str, float]:
         """Extract each base estimator's weight from the meta-learner's fitted
         coefficients. With stack_method="predict_proba" (the default when
         every base estimator supports it, as here) and passthrough=False, the
@@ -264,7 +268,9 @@ class WeightedContributionExplainer:
                     continue
                 for entry in contributions:
                     for feature_name, value in entry.items():
-                        combined[feature_name] = combined.get(feature_name, 0.0) + weight * value
+                        combined[feature_name] = (
+                            combined.get(feature_name, 0.0) + weight * value
+                        )
                 if baseline is not None:
                     weighted_baseline += weight * baseline
                     baseline_weight_total += weight
@@ -272,7 +278,9 @@ class WeightedContributionExplainer:
             if not combined:
                 return None, None
 
-            ordered = sorted(combined.items(), key=lambda kv: abs(kv[1]), reverse=True)[:top_k]
+            ordered = sorted(combined.items(), key=lambda kv: abs(kv[1]), reverse=True)[
+                :top_k
+            ]
             result = [{name: value} for name, value in ordered]
             baseline_probability = (
                 weighted_baseline / baseline_weight_total

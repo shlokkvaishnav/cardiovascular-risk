@@ -84,7 +84,9 @@ class ModelTrainer:
 
         n_jobs = self.config["training"].get("n_jobs", -1)
 
-        def _merge(defaults: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+        def _merge(
+            defaults: Dict[str, Any], overrides: Dict[str, Any]
+        ) -> Dict[str, Any]:
             return {**defaults, **overrides}
 
         return {
@@ -147,12 +149,12 @@ class ModelTrainer:
         # CI runs a tiny trial budget as a smoke test (proves the tuning code
         # path works); full local/manual retrains use the larger budget.
         is_ci = bool(os.environ.get("CI") or os.environ.get("CI_SMOKE"))
-        n_trials = tuning_cfg.get("n_trials_ci", 3) if is_ci else tuning_cfg.get(
-            "n_trials", 20
+        n_trials = (
+            tuning_cfg.get("n_trials_ci", 3)
+            if is_ci
+            else tuning_cfg.get("n_trials", 20)
         )
-        tuner = HyperparameterTuner(
-            random_seed=self.config["project"]["random_seed"]
-        )
+        tuner = HyperparameterTuner(random_seed=self.config["project"]["random_seed"])
 
         results: Dict[str, Dict[str, float]] = {}
         fitted_pipelines: Dict[str, Any] = {}
@@ -202,7 +204,9 @@ class ModelTrainer:
             fitted_pipelines[name] = fitted_pipeline
 
         if "Stacking" in candidate_names:
-            self._train_stacking(fitted_pipelines, X_train, y_train, results, candidate_names)
+            self._train_stacking(
+                fitted_pipelines, X_train, y_train, results, candidate_names
+            )
 
         best_name = self._select_best(results)
         best_model = fitted_pipelines.get(best_name)
@@ -249,9 +253,13 @@ class ModelTrainer:
         another outer k-fold would multiply cost by roughly folds^2 for a
         variance estimate this dataset's size doesn't need (see the other
         candidates' cv_*_std values, all under 0.004)."""
-        base_names = [n for n in candidate_names if n != "Stacking" and n in fitted_pipelines]
+        base_names = [
+            n for n in candidate_names if n != "Stacking" and n in fitted_pipelines
+        ]
         if len(base_names) < 2:
-            logger.warning("Stacking needs at least 2 trained base candidates, skipping")
+            logger.warning(
+                "Stacking needs at least 2 trained base candidates, skipping"
+            )
             return
 
         try:

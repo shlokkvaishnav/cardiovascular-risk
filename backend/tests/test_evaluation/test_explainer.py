@@ -111,7 +111,9 @@ def test_explainer_returns_signed_contributions_for_all_model_types(
     assert any(abs(v) > 1e-9 for v in values)
 
 
-def test_explainer_unwraps_calibrated_classifier_to_tree_explainer(config, training_data):
+def test_explainer_unwraps_calibrated_classifier_to_tree_explainer(
+    config, training_data
+):
     """A CalibratedClassifierCV-wrapped RandomForest must still resolve to the
     fast, exact TreeExplainer -- not silently fall through to the
     30-60s/prediction KernelExplainer fallback."""
@@ -180,7 +182,10 @@ def test_weighted_contribution_explainer_resolves_for_stacking(config, training_
         (
             "lr",
             Pipeline(
-                [("preprocessor", engineer.build_preprocessor()), ("model", LogisticRegression(max_iter=1000))]
+                [
+                    ("preprocessor", engineer.build_preprocessor()),
+                    ("model", LogisticRegression(max_iter=1000)),
+                ]
             ),
         ),
         (
