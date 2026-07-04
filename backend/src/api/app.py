@@ -28,7 +28,15 @@ from .schemas import (
     HealthResponse,
     ModelInfo,
 )
-from ..evaluation.explainer import SHAPExplainer
+from sklearn.ensemble import StackingClassifier
+
+from ..evaluation.explainer import SHAPExplainer, WeightedContributionExplainer
+from ..features.derived import (
+    DERIVED_CATEGORICAL_FEATURES,
+    DERIVED_NUMERICAL_FEATURES,
+    compute_derived_features,
+)
+from ..utils.model_introspection import unwrap_calibrated
 from . import auth as auth_router_module
 from . import reports as reports_router_module
 from . import document_extraction as document_extraction_router_module
@@ -37,23 +45,31 @@ from prometheus_client import Counter, Histogram
 
 # Model-facing feature order (must match preprocessing.numerical_features +
 # categorical_features in config.yaml, and the columns produced by
-# DataLoader._preprocess_cardio_lifestyle). Note "bmi" is derived server-side
-# from the client-facing height/weight fields in PredictionRequest -- see
-# _to_feature_vector -- rather than accepted directly from the client.
-FEATURE_NAMES: List[str] = [
-    "age",
-    "sex",
-    "height",
-    "weight",
-    "bmi",
-    "ap_hi",
-    "ap_lo",
-    "cholesterol",
-    "gluc",
-    "smoke",
-    "alco",
-    "active",
-]
+# DataLoader._preprocess_cardio_lifestyle). "bmi" plus the other derived
+# clinical features (pulse_pressure, map_pressure, bp_category, bmi_category,
+# age_bucket) are computed server-side from the client-facing raw fields in
+# PredictionRequest via features.derived.compute_derived_features -- the same
+# function DataLoader uses at training time -- rather than accepted directly
+# from the client.
+FEATURE_NAMES: List[str] = (
+    [
+        "age",
+        "sex",
+        "height",
+        "weight",
+        "ap_hi",
+        "ap_lo",
+    ]
+    + DERIVED_NUMERICAL_FEATURES
+    + [
+        "cholesterol",
+        "gluc",
+        "smoke",
+        "alco",
+        "active",
+    ]
+    + DERIVED_CATEGORICAL_FEATURES
+)
 
 
 # --- Structured Logging Setup ---
@@ -135,7 +151,7 @@ PREDICTED_PROBABILITY = Histogram(
 
 # Global State
 model = None
-explainer: Optional[SHAPExplainer] = None
+explainer: Optional[Any] = None  # SHAPExplainer or WeightedContributionExplainer
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 REPO_ROOT = BACKEND_DIR.parent
 MODEL_PATH = BACKEND_DIR / "models" / "artifacts" / "best_model.pkl"
@@ -154,15 +170,15 @@ def _to_feature_vector(req: PredictionRequest) -> pd.DataFrame:
     training), so a raw ndarray fails at transform time with
     'Specifying the columns using strings is only supported for dataframes.'
 
-    BMI is derived here (not accepted from the client) so it's always
-    consistent with height/weight and with how DataLoader derives it at
-    training time.
+    BMI and the other derived clinical features (pulse pressure, MAP, BP/BMI
+    category, age bucket) are computed here via the same
+    features.derived.compute_derived_features used at training time, so
+    serving can never drift from what the model was fit on.
     """
     values: Dict[str, float] = req.model_dump()
-    values["bmi"] = req.weight / ((req.height / 100) ** 2)
-    return pd.DataFrame(
-        [[values[feature] for feature in FEATURE_NAMES]], columns=FEATURE_NAMES
-    )
+    row = pd.DataFrame([values])
+    row = compute_derived_features(row, feature_engineering_enabled=True)
+    return row[FEATURE_NAMES]
 
 
 def _risk_level(probability: float) -> str:
@@ -183,10 +199,17 @@ def _model_predict(
     return predictions, probability, confidence
 
 
-def _load_explainer(model_ref) -> Optional[SHAPExplainer]:
+def _load_explainer(model_ref):
     """Build a real SHAP explainer for the loaded model, using the background
     sample persisted at training time. Never raises: returns None (and logs)
-    on any failure, so a missing/corrupt background never blocks startup."""
+    on any failure, so a missing/corrupt background never blocks startup.
+
+    If the served model is a stacking ensemble (see ModelTrainer._train_stacking),
+    an exact SHAP explanation would require the slow, model-agnostic
+    KernelExplainer on the meta-learner -- the same cost that already ruled
+    out SVM as a served model. WeightedContributionExplainer stays fast by
+    combining each base estimator's own fast/exact explainer, weighted by the
+    meta-learner's coefficients, instead."""
     if model_ref is None or not SHAP_BACKGROUND_PATH.exists():
         return None
     try:
@@ -194,6 +217,9 @@ def _load_explainer(model_ref) -> Optional[SHAPExplainer]:
         # Keep as a DataFrame with named columns: the ColumnTransformer was
         # fit on a DataFrame and requires one at transform time too.
         background = background_df[FEATURE_NAMES]
+        unwrapped = unwrap_calibrated(model_ref)
+        if isinstance(unwrapped, StackingClassifier):
+            return WeightedContributionExplainer(unwrapped, background, FEATURE_NAMES)
         return SHAPExplainer(model_ref, background, FEATURE_NAMES)
     except Exception as exc:
         logger.warning(f"Failed to build SHAP explainer: {exc}")

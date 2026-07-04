@@ -4,6 +4,8 @@ import pandas as pd
 import logging
 from pydantic import BaseModel, field_validator
 
+from ..features.derived import compute_derived_features
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,19 +81,25 @@ class DataLoader:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # Derived feature: BMI. A handful of rows have implausible height/weight
-        # (data-entry errors in the source, e.g. height in the 50s or 250s cm) --
-        # these are left for DataValidator's outlier/range checks downstream
-        # rather than silently dropped here.
-        df["bmi"] = df["weight"] / ((df["height"] / 100) ** 2)
-
         # ap_hi/ap_lo have known data-quality issues in the source dataset
         # (some rows have negative or wildly out-of-range values, e.g. -150 or
         # 16020, likely decimal-point entry errors). Clip to a physiologically
         # plausible range rather than dropping rows, consistent with this
         # pipeline's general "validate and impute, don't discard" approach.
+        # Done before deriving BMI/pulse-pressure/BP-category so those are
+        # computed from physiologically plausible values.
         df["ap_hi"] = df["ap_hi"].clip(lower=70, upper=240)
         df["ap_lo"] = df["ap_lo"].clip(lower=40, upper=160)
+
+        # BMI plus, when enabled, pulse pressure/MAP/BP-category/BMI-category/
+        # age-bucket -- shared with the serving path (app._to_feature_vector)
+        # via compute_derived_features so the two can never drift apart.
+        fe_enabled = (
+            self.config.get("preprocessing", {})
+            .get("feature_engineering", {})
+            .get("enabled", True)
+        )
+        df = compute_derived_features(df, feature_engineering_enabled=fe_enabled)
 
         df["target"] = (
             pd.to_numeric(df["cardio"], errors="coerce").fillna(0).astype("int8")

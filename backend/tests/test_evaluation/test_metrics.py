@@ -110,6 +110,66 @@ def test_save_and_load_metrics_roundtrip(evaluator, tmp_path, perfect_prediction
     assert loaded["model_name"] == "roundtrip"
 
 
+def test_evaluate_model_includes_brier_score_and_calibration_curve(
+    evaluator, perfect_predictions
+):
+    y_true, y_pred, y_pred_proba = perfect_predictions
+    metrics = evaluator.evaluate_model(
+        y_true, y_pred, y_pred_proba, model_name="calibrated"
+    )
+
+    assert "brier_score" in metrics
+    assert metrics["brier_score"] < 0.1  # near-perfect predictions -> low Brier score
+    assert "calibration_curve" in metrics
+    assert "prob_true" in metrics["calibration_curve"]
+    assert "prob_pred" in metrics["calibration_curve"]
+
+
+def test_evaluate_model_omits_calibration_when_no_proba(evaluator):
+    y_true = np.array([0, 0, 1, 1])
+    y_pred = np.array([0, 1, 1, 0])
+    metrics = evaluator.evaluate_model(y_true, y_pred, model_name="no_proba")
+    assert "brier_score" not in metrics
+    assert "calibration_curve" not in metrics
+
+
+def test_assess_calibration_perfect_calibration_zero_brier(evaluator):
+    y_true = np.array([0, 1, 0, 1])
+    y_pred_proba = np.array([0.0, 1.0, 0.0, 1.0])
+    result = evaluator.assess_calibration(y_true, y_pred_proba, n_bins=2)
+    assert result["brier_score"] == pytest.approx(0.0)
+
+
+def test_evaluate_by_subgroup_reports_per_group_metrics(evaluator):
+    y_true = np.array([0, 1, 0, 1, 0, 1, 0, 1])
+    y_pred = np.array([0, 1, 0, 0, 0, 1, 1, 1])
+    y_pred_proba = np.array([0.1, 0.9, 0.2, 0.4, 0.3, 0.8, 0.6, 0.7])
+    sex = np.array([0, 0, 0, 0, 1, 1, 1, 1])
+
+    result = evaluator.evaluate_by_subgroup(y_true, y_pred, y_pred_proba, sex, "sex")
+
+    assert result["subgroup_name"] == "sex"
+    assert set(result["groups"].keys()) == {"0", "1"}
+    for group in result["groups"].values():
+        assert group["n"] == 4
+        assert "accuracy" in group
+        assert "roc_auc" in group
+        assert "brier_score" in group
+
+
+def test_evaluate_by_subgroup_handles_single_class_group(evaluator):
+    y_true = np.array([0, 0, 1, 1])
+    y_pred = np.array([0, 0, 1, 0])
+    y_pred_proba = np.array([0.1, 0.2, 0.8, 0.4])
+    group = np.array(["a", "a", "b", "b"])
+
+    result = evaluator.evaluate_by_subgroup(y_true, y_pred, y_pred_proba, group, "test")
+    # Should not raise even though each subgroup is small; roc_auc/brier may
+    # be present or absent depending on class diversity within the group.
+    assert result["groups"]["a"]["n"] == 2
+    assert result["groups"]["b"]["n"] == 2
+
+
 def test_get_performance_summary_contains_key_metrics(evaluator, perfect_predictions):
     y_true, y_pred, y_pred_proba = perfect_predictions
     metrics = evaluator.evaluate_model(

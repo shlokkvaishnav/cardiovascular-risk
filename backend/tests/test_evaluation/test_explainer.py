@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
-from src.evaluation.explainer import SHAPExplainer
+from src.evaluation.explainer import SHAPExplainer, WeightedContributionExplainer
 from src.features.feature_engineering import FeatureEngineer
 
 FEATURE_NAMES = [
@@ -108,6 +109,105 @@ def test_explainer_returns_signed_contributions_for_all_model_types(
     # At least one contribution should be meaningfully non-zero
     values = [v for entry in contributions for v in entry.values()]
     assert any(abs(v) > 1e-9 for v in values)
+
+
+def test_explainer_unwraps_calibrated_classifier_to_tree_explainer(config, training_data):
+    """A CalibratedClassifierCV-wrapped RandomForest must still resolve to the
+    fast, exact TreeExplainer -- not silently fall through to the
+    30-60s/prediction KernelExplainer fallback."""
+    X, y = training_data
+    engineer = FeatureEngineer(config)
+    preprocessor = engineer.build_preprocessor()
+    pipeline = Pipeline(
+        [
+            ("preprocessor", preprocessor),
+            ("model", RandomForestClassifier(n_estimators=50, random_state=42)),
+        ]
+    )
+    calibrated = CalibratedClassifierCV(estimator=pipeline, method="sigmoid", cv=3)
+    calibrated.fit(X, y)
+
+    background = X.sample(n=30, random_state=42)
+    explainer = SHAPExplainer(calibrated, background, list(X.columns))
+
+    assert explainer._is_kernel is False
+    contributions, baseline = explainer.explain(X.iloc[[0]])
+    assert contributions is not None
+    assert baseline is not None
+
+
+def test_explainer_detects_lightgbm_as_tree_explainer(config, training_data):
+    lgb = pytest.importorskip("lightgbm")
+    X, y = training_data
+    pipeline = _fit_pipeline(
+        lgb.LGBMClassifier(n_estimators=50, random_state=42, verbosity=-1), config, X, y
+    )
+    background = X.sample(n=30, random_state=42)
+    explainer = SHAPExplainer(pipeline, background, list(X.columns))
+
+    assert explainer._is_kernel is False
+    contributions, baseline = explainer.explain(X.iloc[[0]])
+    assert contributions is not None
+
+
+def test_explainer_detects_xgboost_as_tree_explainer(config, training_data):
+    xgb = pytest.importorskip("xgboost")
+    X, y = training_data
+    pipeline = _fit_pipeline(
+        xgb.XGBClassifier(n_estimators=50, random_state=42, eval_metric="logloss"),
+        config,
+        X,
+        y,
+    )
+    background = X.sample(n=30, random_state=42)
+    explainer = SHAPExplainer(pipeline, background, list(X.columns))
+
+    assert explainer._is_kernel is False
+    contributions, baseline = explainer.explain(X.iloc[[0]])
+    assert contributions is not None
+
+
+def test_weighted_contribution_explainer_resolves_for_stacking(config, training_data):
+    """A fitted StackingClassifier must get fast, non-null explanations via
+    WeightedContributionExplainer rather than the slow KernelExplainer path."""
+    from sklearn.ensemble import StackingClassifier
+
+    X, y = training_data
+    engineer = FeatureEngineer(config)
+    preprocessor = engineer.build_preprocessor()
+
+    base_pipelines = [
+        (
+            "lr",
+            Pipeline(
+                [("preprocessor", engineer.build_preprocessor()), ("model", LogisticRegression(max_iter=1000))]
+            ),
+        ),
+        (
+            "rf",
+            Pipeline(
+                [
+                    ("preprocessor", engineer.build_preprocessor()),
+                    ("model", RandomForestClassifier(n_estimators=30, random_state=42)),
+                ]
+            ),
+        ),
+    ]
+    stacking = StackingClassifier(
+        estimators=base_pipelines,
+        final_estimator=LogisticRegression(max_iter=1000),
+        cv=2,
+    )
+    stacking.fit(X, y)
+
+    background = X.sample(n=30, random_state=42)
+    explainer = WeightedContributionExplainer(stacking, background, list(X.columns))
+
+    contributions, baseline = explainer.explain(X.iloc[[0]])
+    assert contributions is not None
+    assert len(contributions) > 0
+    assert baseline is not None
+    assert 0 <= baseline <= 1
 
 
 def test_explainer_handles_invalid_input_gracefully(config, training_data):

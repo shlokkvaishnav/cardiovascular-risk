@@ -14,7 +14,9 @@ from sklearn.metrics import (
     roc_curve,
     precision_recall_curve,
     average_precision_score,
+    brier_score_loss,
 )
+from sklearn.calibration import calibration_curve
 from typing import Dict, Any, Tuple, Optional
 import logging
 import json
@@ -98,6 +100,13 @@ class ModelEvaluator:
             except Exception as e:
                 logger.warning(f"Could not calculate probability-based metrics: {e}")
 
+            try:
+                calibration = self.assess_calibration(y_true, y_pred_proba)
+                metrics["brier_score"] = calibration["brier_score"]
+                metrics["calibration_curve"] = calibration["calibration_curve"]
+            except Exception as e:
+                logger.warning(f"Could not calculate calibration metrics: {e}")
+
         # Classification report
         try:
             report = classification_report(
@@ -120,6 +129,27 @@ class ModelEvaluator:
         self.metrics_history.append(metrics)
 
         return metrics
+
+    def assess_calibration(
+        self, y_true: np.ndarray, y_pred_proba: np.ndarray, n_bins: int = 10
+    ) -> Dict[str, Any]:
+        """Standalone calibration assessment: Brier score (lower is better,
+        0 = perfect) plus a reliability-diagram curve (predicted probability
+        vs. observed frequency per bin). Clinically, this matters more than
+        accuracy/F1 for a risk-prediction tool -- a well-calibrated 30%
+        should mean roughly 3 in 10 such patients actually have the
+        condition, independent of the classification threshold."""
+        brier = float(brier_score_loss(y_true, y_pred_proba))
+        prob_true, prob_pred = calibration_curve(
+            y_true, y_pred_proba, n_bins=n_bins, strategy="uniform"
+        )
+        return {
+            "brier_score": brier,
+            "calibration_curve": {
+                "prob_true": [float(v) for v in prob_true],
+                "prob_pred": [float(v) for v in prob_pred],
+            },
+        }
 
     def compare_models(self, metrics_list: list) -> Dict[str, Any]:
         """
@@ -174,6 +204,56 @@ class ModelEvaluator:
             logger.error(f"Failed to load metrics: {e}")
             return None
 
+    def evaluate_by_subgroup(
+        self,
+        y_true: np.ndarray,
+        y_pred: np.ndarray,
+        y_pred_proba: Optional[np.ndarray],
+        subgroup_values,
+        subgroup_name: str,
+    ) -> Dict[str, Any]:
+        """Break down accuracy/ROC-AUC/Brier score by each unique value of
+        `subgroup_values` (e.g. sex, or age_bucket). Aggregate metrics can
+        mask meaningful miscalibration or discrimination gaps in specific
+        subgroups -- a documented pitfall in cardiovascular-risk-prediction
+        literature. This is a reporting/audit function only: it does not
+        change training or selection behavior, it surfaces a signal that a
+        human should review."""
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+        subgroup_values = np.asarray(subgroup_values)
+        if y_pred_proba is not None:
+            y_pred_proba = np.asarray(y_pred_proba)
+
+        result: Dict[str, Any] = {"subgroup_name": subgroup_name, "groups": {}}
+
+        for value in sorted(set(subgroup_values.tolist())):
+            mask = subgroup_values == value
+            n = int(mask.sum())
+            group: Dict[str, Any] = {"n": n}
+            if n == 0:
+                result["groups"][str(value)] = group
+                continue
+
+            group["accuracy"] = float(accuracy_score(y_true[mask], y_pred[mask]))
+
+            group_proba = y_pred_proba[mask] if y_pred_proba is not None else None
+            if group_proba is not None and len(set(y_true[mask].tolist())) > 1:
+                try:
+                    group["roc_auc"] = float(roc_auc_score(y_true[mask], group_proba))
+                    group["brier_score"] = float(
+                        brier_score_loss(y_true[mask], group_proba)
+                    )
+                except Exception as e:  # pragma: no cover - defensive
+                    logger.warning(
+                        f"Could not compute probability metrics for "
+                        f"{subgroup_name}={value}: {e}"
+                    )
+
+            result["groups"][str(value)] = group
+
+        return result
+
     def calculate_business_metrics(
         self,
         y_true: np.ndarray,
@@ -227,6 +307,8 @@ Classification Metrics:
 
         if "roc_auc" in metrics:
             summary += f"  - ROC-AUC:    {metrics['roc_auc']:.4f}\n"
+        if "brier_score" in metrics:
+            summary += f"  - Brier Score: {metrics['brier_score']:.4f} (lower is better)\n"
 
         summary += f"""
 Confusion Matrix:

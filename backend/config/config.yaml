@@ -16,6 +16,12 @@ data:
   validation_size: 0.2
 
 preprocessing:
+  feature_engineering:
+    # Toggle for the derived clinical features below (pulse pressure, MAP,
+    # BP/BMI category, age bucket). BMI itself is always computed regardless
+    # of this flag -- it long predates this toggle and every downstream
+    # consumer (config lists, FEATURE_NAMES in app.py) assumes its presence.
+    enabled: true
   numerical_features:
     - age
     - height
@@ -23,6 +29,10 @@ preprocessing:
     - bmi
     - ap_hi
     - ap_lo
+    - pulse_pressure
+    - map_pressure
+    - health_risk_score
+    - bmi_bp_interaction
   categorical_features:
     - sex
     - cholesterol
@@ -30,6 +40,9 @@ preprocessing:
     - smoke
     - alco
     - active
+    - bp_category
+    - bmi_category
+    - age_bucket
   imputation_strategy:
     numerical: median
     categorical: most_frequent
@@ -38,7 +51,31 @@ training:
   n_jobs: -1
   cv_folds: 5
   metrics: ['accuracy', 'f1', 'roc_auc']
-  
+  candidate_models:
+    - LogisticRegression
+    - RandomForest
+    - LightGBM
+    - XGBoost
+    - Stacking
+  stacking_cv_folds: 3   # internal CV for the stacking meta-learner's out-of-fold features
+  model_selection:
+    primary_metric: roc_auc
+    tie_breaker: f1
+    tie_tolerance: 0.002
+  tuning:
+    enabled: true
+    n_trials: 50        # full local/manual retrain budget
+    n_trials_ci: 3       # CI smoke-test budget -- proves the code path works, not a real search
+    cv_folds: 5
+    scoring: roc_auc
+  calibration:
+    enabled: true
+    method: isotonic
+    cv: 5
+  business_cost:
+    cost_fp: 1.0
+    cost_fn: 10.0
+
 mlflow:
   tracking_uri: sqlite:///mlflow.db
   experiment_name: cardiovascular_risk_baseline
@@ -57,3 +94,14 @@ validation:
     smoke: { min: 0, max: 1 }
     alco: { min: 0, max: 1 }
     active: { min: 0, max: 1 }
+    # Allows negative values: a handful of source rows have diastolic >
+    # systolic BP (a data-entry inconsistency in the raw Kaggle dataset,
+    # pre-existing and previously unflagged since ap_hi/ap_lo were only
+    # range-checked independently, not against each other).
+    pulse_pressure: { min: -100, max: 200 }
+    map_pressure: { min: 40, max: 200 }
+    bp_category: { min: 0, max: 4 }
+    bmi_category: { min: 0, max: 3 }
+    age_bucket: { min: 0, max: 9 }
+    health_risk_score: { min: 0, max: 6 }
+    bmi_bp_interaction: { min: 0, max: 80 }

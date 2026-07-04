@@ -20,6 +20,9 @@ httpx>=0.24.0
 python-multipart>=0.0.6
 dvc>=3.0.0
 shap>=0.44.0
+lightgbm>=4.0.0
+xgboost>=2.0.0
+optuna>=3.5.0
 
 # Accounts / persistence (Phase 3)
 sqlalchemy>=2.0.0

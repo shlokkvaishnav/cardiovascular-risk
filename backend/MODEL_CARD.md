@@ -29,10 +29,19 @@ The app surfaces this disclaimer directly in the UI (`apps/web/app/privacy/page.
 | Target | `cardio` (binary: cardiovascular disease presence) |
 | Class balance | ~50/50 (34,979 / 35,021 in the source data) |
 
-**Features**: age (converted from days to years), sex, height, weight, BMI (derived:
-`weight / (height/100)^2`), systolic BP (`ap_hi`), diastolic BP (`ap_lo`), cholesterol
-category (1=normal, 2=above normal, 3=well above normal), glucose category (same scale),
-smoking status, alcohol intake, physical activity.
+**Features**: age (converted from days to years), sex, height, weight, systolic BP (`ap_hi`),
+diastolic BP (`ap_lo`), cholesterol category (1=normal, 2=above normal, 3=well above normal),
+glucose category (same scale), smoking status, alcohol intake, physical activity, plus 7
+derived clinical features computed once by `backend/src/features/derived.py` and shared
+between training and serving (so they can never drift apart): BMI (`weight / (height/100)^2`),
+pulse pressure (`ap_hi - ap_lo`), mean arterial pressure, an AHA blood-pressure category
+(normal/elevated/stage1/stage2/crisis), a WHO BMI category (underweight/normal/overweight/obese),
+a decade-based age bucket, a 0-6 composite health-risk score (sum of above-normal
+cholesterol/glucose, smoking, alcohol, inactivity, and stage-1-or-worse hypertension flags), and
+a BMI × elevated-blood-pressure interaction term. Per the diagnostic SHAP feature-importance
+report (`backend/scripts/feature_importance_report.py`, `logs/evaluation/shap_feature_ranking.json`),
+systolic BP dominates, followed by age and mean arterial pressure; the new composite/interaction
+features rank lower but are not dead weight.
 
 **Known data quality issues** (surfaced by `backend/src/data/data_validator.py`, not hidden):
 a small number of rows (~50-90 out of 70,000, depending on the field) have physiologically
@@ -50,51 +59,156 @@ questionnaire can realistically collect (no ECG/angiography features required).
 
 ## Model & Training
 
-Three candidate models are trained and compared via 5-fold cross-validation
-(`backend/src/training/trainer.py`): Logistic Regression, Random Forest (300 trees,
-balanced subsampling), and SVM. The highest CV-accuracy model is selected and evaluated on
-the held-out test set.
+Five candidates are trained via 5-fold stratified cross-validation
+(`backend/src/training/trainer.py`): Logistic Regression, Random Forest, LightGBM, and XGBoost,
+each with its own hyperparameters tuned by Optuna (50 trials/model, scored on CV ROC-AUC), plus
+a **Stacking ensemble** combining all four (meta-learner: Logistic Regression, 3-fold internal
+CV to build leakage-free meta-features, base models reuse their already-tuned hyperparameters
+rather than being re-tuned). SVM remains excluded — its only SHAP option, `KernelExplainer`,
+took 30-60s per prediction in practice, incompatible with an interactive API. Candidates are
+selected by CV ROC-AUC (not raw accuracy, which can favor a model with worse-calibrated,
+less-discriminating probabilities), with CV F1 as a tie-breaker within 0.002.
 
-| Model | 5-fold CV Accuracy |
-|---|---|
-| Logistic Regression | 0.7293 |
-| **Random Forest (selected)** | **0.7244*** |
-| SVM | excluded from default candidates — `KernelExplainer` SHAP cost makes it impractical to serve interactively at this dataset size |
+| Model | CV ROC-AUC | CV F1 | CV Accuracy | Tuned hyperparameters |
+|---|---|---|---|---|
+| Logistic Regression | 0.7949 | 0.7124 | 0.7309 | C=0.0165 |
+| Random Forest | 0.8025 | 0.7254 | 0.7364 | n_estimators=581, max_depth=12, min_samples_leaf=20 |
+| LightGBM | 0.8039 | 0.7277 | 0.7367 | n_estimators=353, num_leaves=21, learning_rate=0.0148, min_child_samples=18 |
+| XGBoost | 0.8041 | 0.7261 | 0.7370 | n_estimators=487, max_depth=4, learning_rate=0.0178, subsample=0.73 |
+| **Stacking (selected)** | **0.8030*** | **0.7291** | **0.7371** | meta-learner over the four models above |
 
-<sup>*Random Forest's CV accuracy narrowly trails Logistic Regression in some runs due to
-random seed variance across folds; it is selected here because it won this specific training
-run and because `TreeExplainer` gives exact, fast SHAP values in production (vs.
-`LinearExplainer`'s linearity assumption).</sup>
+<sup>*Stacking's ROC-AUC is evaluated on a single stratified train/validation split rather than
+a full outer 5-fold CV: a `StackingClassifier` already runs its own internal CV to build
+leakage-free meta-features, so wrapping it in another outer k-fold would multiply cost by
+roughly `folds²` for a variance estimate this dataset's size doesn't need (the other candidates'
+CV standard deviations are all under 0.004).</sup>
+
+Stacking is selected: it's within 0.002 ROC-AUC of XGBoost (the nominal ROC-AUC winner) but has
+the best F1 and CV accuracy of all five candidates, so it wins on the tie-breaker. **Latency
+tradeoff, explicitly accepted**: serving Stacking means `/predict` explanations run all four
+base explainers per request (~3-5s including a 581-tree Random Forest `TreeExplainer`), vs.
+~0.2s for any single tree-model candidate. Still far below the 30-60s `KernelExplainer`
+fallback this project has twice already ruled out, and was judged an acceptable tradeoff for
+this screening tool's latency budget over serving a marginally-worse-F1 single model.
+
+The selected model is then wrapped in a `CalibratedClassifierCV` (isotonic regression, 5-fold)
+so its output probabilities are clinically meaningful, not just well-ranked — see Calibration
+below.
 
 ### Held-out test set performance (21,000 samples)
 
-| Metric | Score |
-|---|---|
-| Accuracy | 0.7244 |
-| Precision | 0.7506 |
-| Recall (Sensitivity) | 0.6718 |
-| Specificity | 0.7770 |
-| F1-Score | 0.7090 |
-| ROC-AUC | 0.7864 |
+| Metric | Score | Round 1 (LightGBM) | Original (Random Forest, untuned) |
+|---|---|---|---|
+| Accuracy | 0.7344 | 0.7338 | 0.7244 |
+| Precision | 0.7507 | 0.7539 | 0.7506 |
+| Recall (Sensitivity) | 0.7014 | 0.6938 | 0.6718 |
+| Specificity | 0.7674 | 0.7737 | 0.7770 |
+| F1-Score | 0.7253 | 0.7226 | 0.7090 |
+| ROC-AUC | 0.7998 | 0.8000 | 0.7864 |
+| Brier Score (lower is better) | 0.1812 | 0.1811 | not previously measured |
 
-**Confusion matrix**: TN 8,163 · FP 2,343 · FN 3,444 · TP 7,050
+**Confusion matrix**: TN 8,062 · FP 2,444 · FN 3,133 · TP 7,361
+
+**Business cost** (false negative weighted 10x a false positive, reflecting that a missed
+diagnosis is worse than an unnecessary follow-up): total cost 33,774 across the test set,
+average 1.608 per prediction (`training.business_cost` in `config.yaml`) — an improvement over
+Round 1's 34,507/1.643, driven by Stacking's higher recall (fewer false negatives).
 
 These numbers are intentionally not cherry-picked against the smaller legacy dataset (which
 scores ~82% accuracy on ~276 test samples) — a larger, noisier, more realistic dataset
 producing a lower but more trustworthy number is the honest tradeoff, and it's the one worth
 reporting on a resume.
 
+## Subgroup performance (fairness/calibration audit)
+
+Aggregate metrics can mask meaningful gaps in specific subgroups. Breakdown by sex and age
+bucket (`backend/scripts/train.py` calls `ModelEvaluator.evaluate_by_subgroup`, saved to
+`logs/evaluation/subgroup_metrics.json`; reporting only, does not change training/selection):
+
+| Sex | n | Accuracy | ROC-AUC | Brier |
+|---|---|---|---|---|
+| Female (0) | 13,645 | 0.7309 | 0.7984 | 0.1819 |
+| Male (1) | 7,355 | 0.7410 | 0.8020 | 0.1799 |
+
+Sex-based performance is close (within ~0.004 ROC-AUC) — no material fairness concern there.
+
+| Age bucket (decade) | n | Accuracy | ROC-AUC | Brier |
+|---|---|---|---|---|
+| 30s | 582 | 0.8333 | 0.8242 | 0.1302 |
+| 40s | 5,956 | 0.7879 | 0.8241 | 0.1565 |
+| 50s | 10,618 | 0.7099 | 0.7675 | 0.1941 |
+| 60s | 3,842 | 0.7041 | 0.7230 | 0.1917 |
+
+**A real, disclosed gap**: the model discriminates and calibrates noticeably worse for
+patients in their 50s-60s (ROC-AUC 0.72-0.77, Brier 0.19-0.19) than for patients in their 30s-40s
+(ROC-AUC ~0.82, Brier 0.13-0.16) — and the 50s-60s buckets make up the majority (69%) of the
+test set. This likely reflects that cardiovascular risk becomes harder to discriminate from
+lifestyle/vitals alone as more of an older population develops disease regardless of individual
+risk-factor variation (a ceiling effect), rather than a data or modeling bug. Flagged here
+rather than smoothed over, per the subgroup-fairness practice this model card previously listed
+as a gap.
+
+## Calibration
+
+Predicted probabilities are calibrated via isotonic regression
+(`sklearn.calibration.CalibratedClassifierCV`, 5-fold), not just ranked. Isotonic was chosen
+over Platt/sigmoid scaling because it makes fewer assumptions about the shape of the
+miscalibration and reliably matches-or-beats Platt scaling once the calibration set exceeds
+roughly 1,000 samples (ours is 49,000 training rows) — consistent with a 2025 clinical-ML
+study on post-hoc calibration for heart disease prediction. Brier score post-calibration:
+0.1811 (0 = perfect, 0.25 = the score of always predicting the base rate on a balanced
+dataset).
+
+## Why not SMOTE / class rebalancing
+
+The dataset is close to perfectly balanced (34,979 / 35,021 positive in the source data).
+SMOTE and other imbalanced-learn resampling techniques are designed for meaningfully skewed
+classes; applying them here would synthesize implausible patients (interpolating between real
+BP/BMI/age combinations) for no benefit, and would require switching to an
+`imblearn.pipeline.Pipeline` to avoid leakage across CV folds. `class_weight="balanced"` /
+`"balanced_subsample"` on the tree-based candidates is sufficient given the near-perfect
+balance.
+
+## Why not deep learning
+
+With ~17 tabular features (11 raw + 6 derived) over 70,000 rows, this is squarely
+gradient-boosted-tree/linear territory. Recent tabular-deep-learning benchmarks (2024-2025)
+show methods like FT-Transformer and TabR are now competitive with tuned GBDTs on *some*
+datasets, but tree-based models still win or tie on most small-to-medium tabular problems,
+especially under a hyperparameter-tuning budget like this one's. A neural net would also
+forfeit the fast, exact `TreeExplainer` SHAP path this system depends on for sub-second
+`/predict` latency — not worth it for this dataset size and shape.
+
 ## Explainability
 
 Every `/predict` response includes real signed SHAP contributions
 (`backend/src/evaluation/explainer.py`), not a static feature-importance list:
-- **TreeExplainer** for the Random Forest (exact, fast — this is the default path)
+- **TreeExplainer** for tree-ensemble candidates (Random Forest, LightGBM, XGBoost)
 - **LinearExplainer** for Logistic Regression
-- **KernelExplainer** (k-means-summarized background) as a slow-but-model-agnostic fallback
+- **WeightedContributionExplainer** for the Stacking ensemble (**the current served model**):
+  combines each base estimator's own fast/exact TreeExplainer/LinearExplainer contributions,
+  weighted by the meta-learner's fitted coefficient for that base estimator's positive-class
+  column. **This is an explicitly disclosed approximation, not a Shapley-exact value for the
+  full stack** — it ignores any nonlinearity the meta-learner could in principle capture
+  (though a Logistic Regression meta-learner, as used here, has none to ignore). Chosen over
+  `shap.KernelExplainer` on the meta-learner, which would cost the same 30-60s/prediction that
+  already ruled out SVM as a served model.
+- **KernelExplainer** (k-means-summarized background) as a slow-but-model-agnostic fallback for
+  any future model type not covered above
+
+The served model is a `CalibratedClassifierCV` wrapping the winning candidate (currently the
+Stacking ensemble); the explainer dispatch unwraps this automatically
+(`backend/src/utils/model_introspection.py::unwrap_calibrated`) to reach the underlying fitted
+estimator before selecting an explainer type, so calibration never silently degrades
+explanation speed/quality.
 
 A `baseline_probability` (the SHAP expected value — the model's average prediction over a
 background sample) is also returned, so the UI can frame each result as "started at X%, your
 factors moved it to Y%."
+
+A separate diagnostic report (`backend/scripts/feature_importance_report.py`,
+`logs/evaluation/shap_feature_ranking.json`) ranks features by mean |SHAP value| across a test
+sample, for manual review — informational only, not wired into automatic feature pruning.
 
 ## Limitations
 
@@ -102,9 +216,13 @@ factors moved it to Y%."
   only self-reportable lifestyle and vitals.
 - **Self-reported data.** The training data's smoking/alcohol/activity fields are
   self-reported in the source survey and subject to reporting bias.
-- **No subgroup fairness analysis performed.** Performance is not currently broken down by
-  age band, sex, or other subgroups — a natural next step before any real-world deployment
-  beyond a portfolio/demo context.
+- **Subgroup performance gap by age.** See "Subgroup performance" above — ROC-AUC/calibration
+  are noticeably worse for patients in their 50s-60s than in their 30s-40s. Sex-based
+  performance is comparable. Any real-world deployment should account for this age-related
+  discrimination gap rather than presenting a single aggregate accuracy figure.
+- **Stacking ensemble's SHAP explanations are an approximation.** See Explainability above —
+  `WeightedContributionExplainer` is not Shapley-exact for the full stack, and `/predict`
+  latency (~3-5s) is higher than a single tree model's (~0.2s) as a result of this choice.
 - **Cholesterol/glucose are categorical, not lab values.** The model consumes a 3-level
   category (normal/above/well above), not a continuous mg/dL reading, because that's what the
   training dataset provides.
@@ -117,5 +235,5 @@ factors moved it to Y%."
 
 This is an educational/portfolio project, not a certified medical device, and is presented as
 such throughout the app (see the persistent disclaimer in `apps/web/app/components/SiteShell.tsx`'s
-footer). Given the dataset's self-reported nature and the lack of subgroup analysis, it should
-not be used to make or influence real clinical decisions.
+footer). Given the dataset's self-reported nature and the disclosed age-related subgroup
+performance gap above, it should not be used to make or influence real clinical decisions.

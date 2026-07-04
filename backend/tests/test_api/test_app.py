@@ -43,7 +43,10 @@ class TestHealthEndpoints:
         data = response.json()
         assert "loaded" in data
         assert "features" in data
-        assert len(data["features"]) == 12
+        # 6 raw numeric + 5 derived numeric (bmi/pulse_pressure/map_pressure/
+        # health_risk_score/bmi_bp_interaction) + 5 raw categorical + 3 derived
+        # categorical (bp/bmi category, age bucket)
+        assert len(data["features"]) == 19
 
 
 class TestPredictionEndpoints:

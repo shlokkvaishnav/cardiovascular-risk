@@ -20,6 +20,7 @@ from src.training.trainer import ModelTrainer
 from src.evaluation.metrics import ModelEvaluator
 from src.evaluation.visualizations import ModelVisualizer
 from src.utils.logger import setup_logger
+from src.utils.model_introspection import unwrap_calibrated
 
 def main(args):
     """Main training function"""
@@ -92,10 +93,14 @@ def main(args):
         logger.info("\n[4/6] Training models...")
         trainer = ModelTrainer(config)
         results = trainer.train_all_models(X_train, y_train, preprocessor)
-        
-        logger.info("\nTraining Results:")
-        for model_name, score in results.items():
-            logger.info(f"  {model_name}: {score:.4f}")
+
+        logger.info("\nTraining Results (5-fold CV):")
+        for model_name, cv_metrics in results.items():
+            logger.info(
+                f"  {model_name}: ROC-AUC={cv_metrics.get('cv_roc_auc_mean', float('nan')):.4f} "
+                f"F1={cv_metrics.get('cv_f1_mean', float('nan')):.4f} "
+                f"Accuracy={cv_metrics.get('cv_accuracy_mean', float('nan')):.4f}"
+            )
         
         # Load best model for evaluation
         best_model_path = PROJECT_ROOT / "models" / "artifacts" / "best_model.pkl"
@@ -110,17 +115,49 @@ def main(args):
         
         evaluator = ModelEvaluator(config)
         metrics = evaluator.evaluate_model(
-            y_test, 
-            y_pred, 
+            y_test,
+            y_pred,
             y_pred_proba,
             model_name="best_model"
         )
-        
+
+        # Business-cost metric (false negatives -- missed diagnoses -- cost
+        # more than false positives). Computed here so it's finally put to
+        # use rather than just defined and never called.
+        business_cfg = config.get("training", {}).get("business_cost", {})
+        business_metrics = evaluator.calculate_business_metrics(
+            y_test,
+            y_pred,
+            cost_fp=business_cfg.get("cost_fp", 1.0),
+            cost_fn=business_cfg.get("cost_fn", 10.0),
+        )
+        metrics["business_cost"] = business_metrics
+        logger.info(
+            f"Business cost: total={business_metrics['total_cost']:.1f} "
+            f"avg_per_prediction={business_metrics['avg_cost_per_prediction']:.4f}"
+        )
+
         # Save metrics
         metrics_path = PROJECT_ROOT / "logs" / "evaluation" / "best_model_metrics.json"
         metrics_path.parent.mkdir(parents=True, exist_ok=True)
         evaluator.save_metrics(metrics, metrics_path)
-        
+
+        # Subgroup fairness/calibration audit -- aggregate metrics can mask
+        # meaningful miscalibration or discrimination gaps in specific
+        # subgroups. Reporting only; does not change training or selection.
+        subgroup_metrics = {}
+        for subgroup_col in ("sex", "age_bucket"):
+            if subgroup_col in X_test.columns:
+                subgroup_metrics[subgroup_col] = evaluator.evaluate_by_subgroup(
+                    y_test, y_pred, y_pred_proba, X_test[subgroup_col], subgroup_col
+                )
+        if subgroup_metrics:
+            subgroup_path = PROJECT_ROOT / "logs" / "evaluation" / "subgroup_metrics.json"
+            subgroup_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(subgroup_path, "w") as f:
+                json.dump(subgroup_metrics, f, indent=2)
+            logger.info(f"Subgroup metrics saved to {subgroup_path}")
+
         # Print summary
         summary = evaluator.get_performance_summary(metrics)
         print("\n" + summary)
@@ -130,23 +167,28 @@ def main(args):
             logger.info("\n[6/6] Creating visualizations...")
             visualizer = ModelVisualizer(output_dir=PROJECT_ROOT / "logs" / "visualizations")
             
+            # best_model may be a CalibratedClassifierCV wrapping the actual
+            # Pipeline (see ModelTrainer.train_all_models) -- unwrap first, or
+            # named_steps/feature_importances_/coef_ below are never found.
+            unwrapped_model = unwrap_calibrated(best_model)
+
             feature_names = None
-            if hasattr(best_model, "named_steps") and "preprocessor" in best_model.named_steps:
-                feature_names = list(best_model.named_steps["preprocessor"].get_feature_names_out())
-            
+            if hasattr(unwrapped_model, "named_steps") and "preprocessor" in unwrapped_model.named_steps:
+                feature_names = list(unwrapped_model.named_steps["preprocessor"].get_feature_names_out())
+
             # Get feature importances if available
             feature_importances = None
-            if hasattr(best_model, "named_steps") and "model" in best_model.named_steps:
-                core_model = best_model.named_steps["model"]
+            if hasattr(unwrapped_model, "named_steps") and "model" in unwrapped_model.named_steps:
+                core_model = unwrapped_model.named_steps["model"]
                 if hasattr(core_model, 'feature_importances_'):
                     feature_importances = core_model.feature_importances_
                 elif hasattr(core_model, 'coef_'):
                     feature_importances = abs(core_model.coef_[0])
             else:
-                if hasattr(best_model, 'feature_importances_'):
-                    feature_importances = best_model.feature_importances_
-                elif hasattr(best_model, 'coef_'):
-                    feature_importances = abs(best_model.coef_[0])
+                if hasattr(unwrapped_model, 'feature_importances_'):
+                    feature_importances = unwrapped_model.feature_importances_
+                elif hasattr(unwrapped_model, 'coef_'):
+                    feature_importances = abs(unwrapped_model.coef_[0])
             
             visualizer.create_evaluation_report(
                 y_test,
@@ -168,11 +210,17 @@ def main(args):
             'train_size': X_train.shape[0],
             'test_size': X_test.shape[0],
             'models_trained': list(results.keys()),
+            'cv_results': results,
+            'selection_metric': config.get('training', {}).get('model_selection', {}).get('primary_metric', 'roc_auc'),
+            'tuning_enabled': config.get('training', {}).get('tuning', {}).get('enabled', False),
+            'calibration_method': config.get('training', {}).get('calibration', {}).get('method') if config.get('training', {}).get('calibration', {}).get('enabled') else None,
             'best_model_metrics': {
                 'accuracy': metrics['accuracy'],
                 'precision': metrics['precision'],
                 'recall': metrics['recall'],
-                'f1_score': metrics['f1_score']
+                'f1_score': metrics['f1_score'],
+                'roc_auc': metrics.get('roc_auc'),
+                'brier_score': metrics.get('brier_score'),
             }
         }
         
