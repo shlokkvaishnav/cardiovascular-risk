@@ -111,9 +111,12 @@ cython_debug/
 !apps/web/app/lib/
 !apps/web/app/lib/*.ts
 
-# DVC local cache/tmp (no remote configured; data files are tracked directly in git)
+# DVC local cache/tmp, and the local-folder DVC remote itself (.dvc-remote/) --
+# this is where `dvc push`/`dvc pull` actually store/fetch tracked data and
+# model artifacts; it's DVC's storage, not something git should track.
 .dvc/cache/
 .dvc/tmp/
+.dvc-remote/
 
 # Local Claude Code session/tooling state (machine-specific paths, runtime locks)
 .claude/
