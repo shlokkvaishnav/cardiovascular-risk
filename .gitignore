@@ -55,6 +55,8 @@ coverage.xml
 # ML artifacts
 backend/mlruns/
 backend/test_mlruns/
+backend/mlflow.db
+backend/test_mlflow.db
 backend/models/artifacts/*
 !backend/models/artifacts/.gitkeep
 # models/checkpoints/*.pkl
