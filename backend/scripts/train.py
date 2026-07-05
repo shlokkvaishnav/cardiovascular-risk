@@ -221,6 +221,7 @@ def main(args):
                 'f1_score': metrics['f1_score'],
                 'roc_auc': metrics.get('roc_auc'),
                 'brier_score': metrics.get('brier_score'),
+                'business_cost': metrics.get('business_cost'),
             }
         }
         

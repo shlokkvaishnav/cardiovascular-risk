@@ -61,19 +61,36 @@ flowchart LR
 ## Model Performance
 
 Trained on the [Kaggle Cardiovascular Disease dataset](https://www.kaggle.com/datasets/sulianova/cardiovascular-disease-dataset)
-(70,000 records, 49,000 train / 21,000 test). Full details, limitations, and methodology in
-[`backend/MODEL_CARD.md`](backend/MODEL_CARD.md).
+(70,000 records, cleaned to 69,707 after repairing a systematic data-entry error in the raw
+blood-pressure fields — see the model card). Five candidates (Logistic Regression, Random
+Forest, LightGBM, XGBoost, and a Stacking ensemble) are tuned via Optuna and compared on
+5-fold CV ROC-AUC; a cheap screening pass gives the full tuning budget only to candidates
+still competitive after a fast untuned pass, cutting total training time from ~100 minutes to
+~42 minutes. Full methodology (EDA, data cleaning, feature engineering, model selection,
+fairness audit, explainability) in [`backend/MODEL_CARD.md`](backend/MODEL_CARD.md).
 
 | Metric | Score |
 |---|---|
-| Accuracy | 72.4% |
-| Precision | 75.1% |
-| Recall | 67.2% |
-| F1-Score | 70.9% |
-| ROC-AUC | 0.786 |
+| Accuracy | 73.9% |
+| Precision | 75.8% |
+| Recall | 70.1% |
+| F1-Score | 72.9% |
+| ROC-AUC | 0.804 |
+| Brier Score (calibration) | 0.179 |
 
 Every prediction includes real, signed SHAP contributions (`TreeExplainer` for the winning
-Random Forest model) — not a decorative feature-importance list.
+model) — not a decorative feature-importance list. Probabilities are isotonic-calibrated, so a
+predicted 30% risk means roughly 3 in 10 similar patients actually have the condition, not just
+a well-ranked score.
+
+### Business impact
+
+The model optimizes for an asymmetric cost, not raw accuracy: a missed diagnosis (false
+negative) is weighted **10x** an unnecessary follow-up (false positive), reflecting that the
+clinical cost of the two error types isn't equal. On the 20,913-row held-out test set, this
+pipeline's tuned model produces an average weighted cost of **1.60 per prediction** (down from
+1.64 before this round's data-cleaning and model-selection improvements) — a concrete,
+quantifiable metric the model is actually tuned against, surfaced live via `GET /model/info`.
 
 ## Quickstart (Docker)
 
@@ -159,7 +176,29 @@ ML-specific panels: prediction volume by risk level and the predicted-probabilit
 — cheap proxies for spotting model or input drift over time. `backend/scripts/drift_check.py`
 does a simple mean-shift comparison against the training distribution, reusing
 `DataValidator`'s existing statistical profiling rather than adding a dedicated drift-detection
-dependency.
+dependency, and runs automatically every Monday via
+[`.github/workflows/drift-check.yml`](.github/workflows/drift-check.yml) (also triggerable
+on-demand from the Actions tab) — non-blocking by design, it surfaces drift for humans to
+review rather than auto-failing the build.
+
+## Data Versioning (DVC)
+
+The raw dataset and every trained-model artifact are tracked with [DVC](https://dvc.org)
+(`backend/dvc.yaml`), not committed to git directly:
+
+```bash
+cd backend
+dvc pull            # fetch the tracked raw data + latest trained model from the remote
+dvc repro           # re-run the training pipeline only if a dependency (data, config, or
+                     # pipeline code) actually changed since the last run
+dvc push            # publish newly produced artifacts to the remote
+```
+
+The pipeline's dependency graph (`dvc.yaml`) declares exactly what feeds the `train` stage
+(raw data, config, and every pipeline source file) and what it produces
+(`best_model.pkl`, `shap_background.pkl`, `training_metadata.json`, evaluation metrics) — so
+`dvc status`/`dvc repro` can tell you precisely whether a retrain is actually needed, not just
+whether someone remembered to run the script.
 
 ## Quality Checks
 

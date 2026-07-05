@@ -1,3 +1,6 @@
 [core]
     no_scm = True
     analytics = false
+    remote = localremote
+['remote "localremote"']
+    url = C:\Users\shlok\dvc-storage\cardiovascular-risk

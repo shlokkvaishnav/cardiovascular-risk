@@ -1,0 +1,21 @@
+stages:
+  train:
+    cmd: python scripts/train.py --create-plots
+    deps:
+      - data/raw/cardio_train.csv
+      - config/config.yaml
+      - src/data/data_loader.py
+      - src/features/derived.py
+      - src/features/feature_engineering.py
+      - src/training/trainer.py
+      - src/training/tuning.py
+      - src/evaluation/metrics.py
+    outs:
+      # Model artifacts stay DVC-cached (not git-tracked), matching how
+      # models/artifacts/ and logs/ are already gitignored in this repo --
+      # DVC becomes the source of truth for these, not git.
+      - models/artifacts/best_model.pkl
+      - models/artifacts/shap_background.pkl
+      - models/artifacts/training_metadata.json
+      - logs/evaluation/best_model_metrics.json
+      - logs/evaluation/subgroup_metrics.json

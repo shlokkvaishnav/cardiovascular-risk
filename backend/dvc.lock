@@ -1,0 +1,58 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python scripts/train.py --create-plots
+    deps:
+    - path: config/config.yaml
+      hash: md5
+      md5: 8dbb97345dbab73f0e9db7afb13e98f7
+      size: 3756
+    - path: data/raw/cardio_train.csv
+      hash: md5
+      md5: 71c46a70f7ba9e3e4736ae73ecd5bac9
+      size: 2941524
+    - path: src/data/data_loader.py
+      hash: md5
+      md5: 74a56584dd1cd3ef666578ba971733a7
+      size: 8961
+    - path: src/evaluation/metrics.py
+      hash: md5
+      md5: c338580ebf874a68c8e38db8992b4571
+      size: 11754
+    - path: src/features/derived.py
+      hash: md5
+      md5: 898567a7e59e5f8167b02866effb7110
+      size: 5223
+    - path: src/features/feature_engineering.py
+      hash: md5
+      md5: 7b922d3d64ceec3b9fd82224aab2c32b
+      size: 2897
+    - path: src/training/trainer.py
+      hash: md5
+      md5: 6f633884965a55362eb51d17ba83abe9
+      size: 18303
+    - path: src/training/tuning.py
+      hash: md5
+      md5: a7c597230a3267af5b4fb081dc7a4b6f
+      size: 5204
+    outs:
+    - path: logs/evaluation/best_model_metrics.json
+      hash: md5
+      md5: 6aaff0401b3421b7fb3bbb6e7965e48b
+      size: 2153
+    - path: logs/evaluation/subgroup_metrics.json
+      hash: md5
+      md5: a81f92384141977e972ddd39056f470b
+      size: 1224
+    - path: models/artifacts/best_model.pkl
+      hash: md5
+      md5: d09d24d2a84ff16c073f063818ccfcfa
+      size: 2715950
+    - path: models/artifacts/shap_background.pkl
+      hash: md5
+      md5: fd8d98b4a11e5a21068fdd5311dfca05
+      size: 14315
+    - path: models/artifacts/training_metadata.json
+      hash: md5
+      md5: 6a10aee72518c32a719cd466d20706dd
+      size: 5878

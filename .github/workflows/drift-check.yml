@@ -1,0 +1,58 @@
+name: Data Drift Check
+
+# Runs backend/scripts/drift_check.py on a schedule so data-drift monitoring
+# actually executes regularly rather than being a script nobody runs. This is
+# deliberately non-blocking (see the script's own docstring: "drift checks
+# are for humans to review, not to auto-block anything") -- it never fails
+# the workflow on detected drift, it just surfaces the check's output in the
+# Actions log on a recurring cadence.
+#
+# Without a deployed backend collecting real request data yet, this runs in
+# the script's built-in smoke-test mode (compares the training data's own
+# held-out split against itself -- expected to report "no drift", proving
+# the check executes correctly on schedule). Once real production traffic
+# exists, point --recent-data at an exported sample of it instead.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # every Monday at 06:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  drift_check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run drift check
+        run: python scripts/drift_check.py
+
+      - name: Upload drift check log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-check-log
+          path: backend/logs/drift_check.log
+          retention-days: 90
