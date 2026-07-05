@@ -17,10 +17,11 @@ data:
 
 preprocessing:
   feature_engineering:
-    # Toggle for the derived clinical features below (pulse pressure, MAP,
-    # BP/BMI category, age bucket). BMI itself is always computed regardless
-    # of this flag -- it long predates this toggle and every downstream
-    # consumer (config lists, FEATURE_NAMES in app.py) assumes its presence.
+    # Toggle for the derived clinical features below (pulse pressure,
+    # BP/BMI category, age bucket, health-risk score, BMI-BP interaction).
+    # BMI itself is always computed regardless of this flag -- it long
+    # predates this toggle and every downstream consumer (config lists,
+    # FEATURE_NAMES in app.py) assumes its presence.
     enabled: true
   numerical_features:
     - age
@@ -30,7 +31,6 @@ preprocessing:
     - ap_hi
     - ap_lo
     - pulse_pressure
-    - map_pressure
     - health_risk_score
     - bmi_bp_interaction
   categorical_features:
@@ -58,6 +58,16 @@ training:
     - XGBoost
     - Stacking
   stacking_cv_folds: 3   # internal CV for the stacking meta-learner's out-of-fold features
+  screening:
+    # Cheap, untuned CV pass run before committing the full Optuna tuning
+    # budget to every candidate. Across two full retrains, RandomForest has
+    # never won (~0.001-0.002 ROC-AUC behind LightGBM/XGBoost) while taking
+    # 5-10x longer to tune -- this lets weak candidates earn a much smaller
+    # budget automatically instead of hardcoding which model to skip.
+    enabled: true
+    cv_folds: 3
+    margin: 0.01          # within this ROC-AUC of the best screening score -> full tuning budget
+    reduced_trials: 10     # trial budget for candidates outside the margin
   model_selection:
     primary_metric: roc_auc
     tie_breaker: f1
@@ -94,12 +104,10 @@ validation:
     smoke: { min: 0, max: 1 }
     alco: { min: 0, max: 1 }
     active: { min: 0, max: 1 }
-    # Allows negative values: a handful of source rows have diastolic >
-    # systolic BP (a data-entry inconsistency in the raw Kaggle dataset,
-    # pre-existing and previously unflagged since ap_hi/ap_lo were only
-    # range-checked independently, not against each other).
-    pulse_pressure: { min: -100, max: 200 }
-    map_pressure: { min: 40, max: 200 }
+    # Rows where diastolic > systolic (a data-entry inconsistency in the raw
+    # Kaggle dataset) are now dropped by DataLoader._clean_blood_pressure, so
+    # pulse_pressure = ap_hi - ap_lo is always non-negative by this point.
+    pulse_pressure: { min: 0, max: 200 }
     bp_category: { min: 0, max: 4 }
     bmi_category: { min: 0, max: 3 }
     age_bucket: { min: 0, max: 9 }

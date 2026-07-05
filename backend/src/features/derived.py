@@ -13,10 +13,19 @@ import pandas as pd
 
 # Column groups, for callers that need to register these with a
 # ColumnTransformer/config alongside the raw features.
+#
+# Note: mean arterial pressure ("map_pressure") was tried in an earlier
+# iteration and dropped -- once ap_hi/ap_lo are properly cleaned (see
+# DataLoader._clean_blood_pressure), MAP correlates 0.92/0.94 with ap_hi/
+# ap_lo (it's a linear combination of them by construction: ap_lo +
+# (ap_hi-ap_lo)/3), so it added almost no information beyond the two raw
+# columns already in the feature set while destabilizing the Logistic
+# Regression base model's coefficients. pulse_pressure is kept: it's far
+# less collinear (0.83 with ap_hi, only 0.23 with ap_lo) and captures real,
+# distinct information about BP variability.
 DERIVED_NUMERICAL_FEATURES = [
     "bmi",
     "pulse_pressure",
-    "map_pressure",
     "health_risk_score",
     "bmi_bp_interaction",
 ]
@@ -106,7 +115,6 @@ def compute_derived_features(
         return df
 
     df["pulse_pressure"] = df["ap_hi"] - df["ap_lo"]
-    df["map_pressure"] = df["ap_lo"] + df["pulse_pressure"] / 3
     df["bp_category"] = _bp_category(df["ap_hi"], df["ap_lo"])
     df["bmi_category"] = _bmi_category(df["bmi"])
     df["age_bucket"] = _age_bucket(df["age"])

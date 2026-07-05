@@ -3,7 +3,7 @@ import mlflow
 import logging
 from pathlib import Path
 from typing import Any, Dict, Tuple
-from sklearn.model_selection import cross_validate, StratifiedKFold
+from sklearn.model_selection import cross_val_score, cross_validate, StratifiedKFold
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV
 
@@ -131,6 +131,50 @@ class ModelTrainer:
             ),
         }
 
+    def _screen_candidates(
+        self, factories, candidate_names, X_train, y_train, preprocessor
+    ) -> Dict[str, float]:
+        """Cheap, untuned CV pass (default hyperparameters, few folds) to rank
+        candidates before committing the full Optuna tuning budget to each.
+
+        Across repeated retrains of this project, RandomForest has never won
+        (consistently ~0.001-0.002 ROC-AUC behind LightGBM/XGBoost) while
+        taking 5-10x longer to tune due to its larger search space. Rather
+        than hardcoding "skip RandomForest", this screens every candidate
+        cheaply first and only gives the full tuning budget to whichever ones
+        are actually still competitive -- data-driven, so it adapts if a
+        future dataset/feature change alters which model is strongest."""
+        screening_cfg = self.config["training"].get("screening", {})
+        cv = StratifiedKFold(
+            n_splits=screening_cfg.get("cv_folds", 3),
+            shuffle=True,
+            random_state=self.config["project"]["random_seed"],
+        )
+        scores: Dict[str, float] = {}
+        for name in candidate_names:
+            if name == "Stacking":
+                continue
+            factory = factories.get(name)
+            if factory is None:
+                continue
+            try:
+                pipeline = Pipeline(
+                    [("preprocessor", preprocessor), ("model", factory())]
+                )
+                cv_scores = cross_val_score(
+                    pipeline,
+                    X_train,
+                    y_train,
+                    cv=cv,
+                    scoring="roc_auc",
+                    n_jobs=self.config["training"].get("n_jobs", -1),
+                )
+                scores[name] = float(cv_scores.mean())
+                logger.info(f"{name}: screening CV ROC-AUC={scores[name]:.4f}")
+            except Exception as e:
+                logger.warning(f"Screening failed for {name}, skipping: {e}")
+        return scores
+
     def train_all_models(
         self, X_train, y_train, preprocessor, artifacts_dir: str = "models/artifacts"
     ):
@@ -156,6 +200,13 @@ class ModelTrainer:
         )
         tuner = HyperparameterTuner(random_seed=self.config["project"]["random_seed"])
 
+        screening_cfg = self.config["training"].get("screening", {})
+        screening_scores: Dict[str, float] = {}
+        if tuning_enabled and screening_cfg.get("enabled", False):
+            screening_scores = self._screen_candidates(
+                factories, candidate_names, X_train, y_train, preprocessor
+            )
+
         results: Dict[str, Dict[str, float]] = {}
         fitted_pipelines: Dict[str, Any] = {}
 
@@ -170,6 +221,22 @@ class ModelTrainer:
 
             logger.info(f"Training {name}...")
 
+            candidate_n_trials = n_trials
+            if screening_scores and name in screening_scores:
+                best_screen = max(screening_scores.values())
+                margin = screening_cfg.get("margin", 0.01)
+                gap = best_screen - screening_scores[name]
+                if gap > margin:
+                    candidate_n_trials = min(
+                        screening_cfg.get("reduced_trials", n_trials), n_trials
+                    )
+                    logger.info(
+                        f"{name}: screening ROC-AUC {screening_scores[name]:.4f} is "
+                        f"{gap:.4f} behind the best screened candidate "
+                        f"({best_screen:.4f}) -- reduced tuning budget: "
+                        f"{candidate_n_trials} trials instead of {n_trials}"
+                    )
+
             best_params: Dict[str, Any] = {}
             if tuning_enabled:
                 try:
@@ -179,7 +246,7 @@ class ModelTrainer:
                         preprocessor,
                         X_train,
                         y_train,
-                        n_trials=n_trials,
+                        n_trials=candidate_n_trials,
                         cv_folds=tuning_cfg.get(
                             "cv_folds", self.config["training"]["cv_folds"]
                         ),

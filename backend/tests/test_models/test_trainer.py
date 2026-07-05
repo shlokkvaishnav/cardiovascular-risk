@@ -5,6 +5,7 @@ from sklearn.calibration import CalibratedClassifierCV
 from sklearn.datasets import make_classification
 
 from src.training.trainer import ModelTrainer
+from src.training.tuning import HyperparameterTuner
 from src.features.feature_engineering import FeatureEngineer
 
 
@@ -267,6 +268,72 @@ def test_train_stacking_produces_fitted_stacking_classifier(
 
     assert "Stacking" in results
     assert isinstance(fitted_pipelines["Stacking"], StackingClassifier)
+
+
+def test_screen_candidates_returns_roc_auc_per_candidate(tabular_config, tabular_data):
+    tabular_config["training"]["candidate_models"] = ["LogisticRegression", "RandomForest"]
+    X, y = tabular_data
+    engineer = FeatureEngineer(tabular_config)
+    preprocessor = engineer.build_preprocessor()
+    trainer = ModelTrainer(tabular_config)
+
+    factories = trainer._build_candidate_factories()
+    scores = trainer._screen_candidates(
+        factories, ["LogisticRegression", "RandomForest"], X, y, preprocessor
+    )
+
+    assert set(scores.keys()) == {"LogisticRegression", "RandomForest"}
+    for score in scores.values():
+        assert 0 <= score <= 1
+
+
+def test_screening_gives_reduced_trials_to_the_weaker_candidate(
+    tabular_config, tabular_data, tmp_path, monkeypatch
+):
+    """A candidate screening far behind the leader should get
+    `screening.reduced_trials` instead of the full `tuning.n_trials` budget --
+    this is the mechanism that keeps a consistently-losing, expensive
+    candidate (e.g. RandomForest) from burning the full tuning budget."""
+    tabular_config["training"]["candidate_models"] = ["LogisticRegression", "RandomForest"]
+    tabular_config["training"]["tuning"] = {
+        "enabled": True,
+        "n_trials": 20,
+        "cv_folds": 2,
+        "scoring": "roc_auc",
+    }
+    tabular_config["training"]["screening"] = {
+        "enabled": True,
+        "cv_folds": 2,
+        "margin": 0.001,
+        "reduced_trials": 2,
+    }
+    X, y = tabular_data
+    engineer = FeatureEngineer(tabular_config)
+    preprocessor = engineer.build_preprocessor()
+    trainer = ModelTrainer(tabular_config)
+
+    # Force a clear screening winner/loser regardless of the tiny synthetic
+    # dataset's actual scores, so the reduced-trials branch is deterministically
+    # exercised.
+    monkeypatch.setattr(
+        trainer,
+        "_screen_candidates",
+        lambda *a, **k: {"LogisticRegression": 0.9, "RandomForest": 0.5},
+    )
+
+    captured_n_trials = {}
+    original_tune_model = HyperparameterTuner.tune_model
+
+    def spy_tune_model(self, model_name, *args, **kwargs):
+        captured_n_trials[model_name] = kwargs.get("n_trials")
+        return original_tune_model(self, model_name, *args, **kwargs)
+
+    monkeypatch.setattr(HyperparameterTuner, "tune_model", spy_tune_model)
+
+    trainer.train_all_models(X, y, preprocessor, artifacts_dir=str(tmp_path))
+
+    assert captured_n_trials["LogisticRegression"] == 20  # within margin of itself -> full budget
+    assert captured_n_trials["RandomForest"] == 2  # far behind -> reduced budget
 
 
 def test_train_all_models_tuning_end_to_end(tabular_config, tabular_data, tmp_path):

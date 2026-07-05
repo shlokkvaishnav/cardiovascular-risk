@@ -46,11 +46,11 @@ from prometheus_client import Counter, Histogram
 # Model-facing feature order (must match preprocessing.numerical_features +
 # categorical_features in config.yaml, and the columns produced by
 # DataLoader._preprocess_cardio_lifestyle). "bmi" plus the other derived
-# clinical features (pulse_pressure, map_pressure, bp_category, bmi_category,
-# age_bucket) are computed server-side from the client-facing raw fields in
-# PredictionRequest via features.derived.compute_derived_features -- the same
-# function DataLoader uses at training time -- rather than accepted directly
-# from the client.
+# clinical features (pulse_pressure, bp_category, bmi_category, age_bucket,
+# health_risk_score, bmi_bp_interaction) are computed server-side from the
+# client-facing raw fields in PredictionRequest via
+# features.derived.compute_derived_features -- the same function DataLoader
+# uses at training time -- rather than accepted directly from the client.
 FEATURE_NAMES: List[str] = (
     [
         "age",
