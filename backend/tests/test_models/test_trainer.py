@@ -271,7 +271,10 @@ def test_train_stacking_produces_fitted_stacking_classifier(
 
 
 def test_screen_candidates_returns_roc_auc_per_candidate(tabular_config, tabular_data):
-    tabular_config["training"]["candidate_models"] = ["LogisticRegression", "RandomForest"]
+    tabular_config["training"]["candidate_models"] = [
+        "LogisticRegression",
+        "RandomForest",
+    ]
     X, y = tabular_data
     engineer = FeatureEngineer(tabular_config)
     preprocessor = engineer.build_preprocessor()
@@ -294,7 +297,10 @@ def test_screening_gives_reduced_trials_to_the_weaker_candidate(
     `screening.reduced_trials` instead of the full `tuning.n_trials` budget --
     this is the mechanism that keeps a consistently-losing, expensive
     candidate (e.g. RandomForest) from burning the full tuning budget."""
-    tabular_config["training"]["candidate_models"] = ["LogisticRegression", "RandomForest"]
+    tabular_config["training"]["candidate_models"] = [
+        "LogisticRegression",
+        "RandomForest",
+    ]
     tabular_config["training"]["tuning"] = {
         "enabled": True,
         "n_trials": 20,
@@ -332,7 +338,9 @@ def test_screening_gives_reduced_trials_to_the_weaker_candidate(
 
     trainer.train_all_models(X, y, preprocessor, artifacts_dir=str(tmp_path))
 
-    assert captured_n_trials["LogisticRegression"] == 20  # within margin of itself -> full budget
+    assert (
+        captured_n_trials["LogisticRegression"] == 20
+    )  # within margin of itself -> full budget
     assert captured_n_trials["RandomForest"] == 2  # far behind -> reduced budget
 
 
