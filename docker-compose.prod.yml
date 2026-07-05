@@ -1,0 +1,38 @@
+# Production overlay for a free VM (e.g. Oracle Cloud Always Free) that
+# hosts the BACKEND ONLY -- the frontend stays on Vercel and reaches this
+# over the network via NEXT_PUBLIC_API_URL.
+#
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build db api caddy
+# (deliberately omits `web`: the Next.js container has no purpose on this
+# VM when Vercel already serves the frontend)
+#
+# Puts Caddy in front as the only publicly-exposed service (80/443) and
+# stops publishing host ports for db/api directly, since on a real VM
+# (unlike local dev) those ports are reachable from the internet, not just
+# localhost.
+services:
+  db:
+    ports: []
+
+  api:
+    ports: []
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cardiovascular-risk-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

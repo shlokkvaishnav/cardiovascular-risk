@@ -1,0 +1,15 @@
+# Reverse proxy for the production VM, which hosts the backend only
+# (frontend stays on Vercel and calls this over the network).
+#
+# SITE_ADDRESS controls both the bind address and whether Caddy attempts
+# automatic HTTPS:
+#   - unset / ":80"        -> plain HTTP on port 80, no TLS (fine even in
+#                              production: Vercel's Next.js rewrite calls
+#                              this server-to-server, not from the browser,
+#                              so there's no browser mixed-content concern)
+#   - "yourdomain.com"      -> Caddy provisions a Let's Encrypt cert and
+#                              serves HTTPS automatically, if you'd rather
+#                              not expose a bare IP
+{$SITE_ADDRESS:":80"} {
+	reverse_proxy api:8000
+}
