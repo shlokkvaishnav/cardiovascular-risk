@@ -297,6 +297,10 @@ def test_screening_gives_reduced_trials_to_the_weaker_candidate(
     `screening.reduced_trials` instead of the full `tuning.n_trials` budget --
     this is the mechanism that keeps a consistently-losing, expensive
     candidate (e.g. RandomForest) from burning the full tuning budget."""
+    # CI sets CI=true, which makes the trainer use its small smoke-test budget
+    # (n_trials_ci). This test checks the full budget, so switch that off.
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("CI_SMOKE", raising=False)
     tabular_config["training"]["candidate_models"] = [
         "LogisticRegression",
         "RandomForest",
