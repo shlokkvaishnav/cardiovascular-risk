@@ -1,4 +1,5 @@
 import type { AssessmentData, RiskCategory, RiskDriver, RiskResult } from "./risk";
+import { apiUrl } from "./apiUrl";
 
 /**
  * The backend's 11 cardiovascular-lifestyle features (Kaggle cardiovascular
@@ -187,7 +188,7 @@ export async function fetchBackendPrediction(
 
   try {
     const apiKey = process.env.NEXT_PUBLIC_API_KEY;
-    const res = await fetch("/api/predict", {
+    const res = await fetch(apiUrl("/api/predict"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

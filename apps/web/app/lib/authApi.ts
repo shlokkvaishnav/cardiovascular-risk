@@ -1,3 +1,4 @@
+import { apiUrl } from "./apiUrl";
 const TOKEN_KEY = "cardio_auth_token_v1";
 
 export class AuthApiError extends Error {}
@@ -29,7 +30,7 @@ async function parseErrorDetail(res: Response): Promise<string> {
 }
 
 export async function register(email: string, password: string): Promise<void> {
-  const res = await fetch("/api/auth/register", {
+  const res = await fetch(apiUrl("/api/auth/register"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -40,7 +41,7 @@ export async function register(email: string, password: string): Promise<void> {
 }
 
 export async function login(email: string, password: string): Promise<void> {
-  const res = await fetch("/api/auth/login", {
+  const res = await fetch(apiUrl("/api/auth/login"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
@@ -63,7 +64,7 @@ export type CurrentUser = {
 export async function fetchCurrentUser(): Promise<CurrentUser | null> {
   const token = getToken();
   if (!token) return null;
-  const res = await fetch("/api/auth/me", {
+  const res = await fetch(apiUrl("/api/auth/me"), {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
@@ -76,7 +77,7 @@ export async function fetchCurrentUser(): Promise<CurrentUser | null> {
 /** Authenticated fetch helper: attaches the bearer token and clears it on 401. */
 export async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const token = getToken();
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     headers: {
       ...(init.headers ?? {}),

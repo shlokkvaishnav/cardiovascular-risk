@@ -1,4 +1,5 @@
 import type { AssessmentData } from "./risk";
+import { apiUrl } from "./apiUrl";
 
 export type ExtractionResponse = {
   extracted_values: {
@@ -25,7 +26,7 @@ export async function extractFromDocument(file: File): Promise<ExtractionRespons
   const formData = new FormData();
   formData.append("file", file);
 
-  const res = await fetch("/api/extract", { method: "POST", body: formData });
+  const res = await fetch(apiUrl("/api/extract"), { method: "POST", body: formData });
   if (!res.ok) {
     let detail = `Extraction failed with status ${res.status}`;
     try {

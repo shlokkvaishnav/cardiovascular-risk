@@ -742,7 +742,7 @@ export function ResultsDashboard() {
               className="btn btn-subtle"
               onClick={() => {
                 const shareText = `I checked my heart health on CardioRisk and got a ${activeResult!.category.toUpperCase()} risk category. Check yours.`;
-                const url = `${window.location.origin}`;
+                const url = `${window.location.origin}${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}`;
                 if (navigator.share) {
                   navigator.share({ title: "CardioRisk", text: shareText, url }).catch(() => {});
                 } else {

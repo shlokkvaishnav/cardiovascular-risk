@@ -131,7 +131,7 @@ export default function DashboardPage() {
                     <span className={riskChipClass(r.risk_level)}>{r.risk_level.toUpperCase()}</span>
                     <strong className="mono">{(r.probability * 100).toFixed(1)}%</strong>
                     <div style={{ display: "flex", gap: 8 }}>
-                      <Link href={`/dashboard/reports/${r.id}`} className="btn btn-subtle">
+                      <Link href={`/dashboard/report?id=${r.id}`} className="btn btn-subtle">
                         <Eye size={14} /> View
                       </Link>
                       <button type="button" className="btn btn-subtle" onClick={() => downloadReportPdf(r.id)}>

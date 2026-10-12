@@ -1,0 +1,66 @@
+name: Deploy to GitHub Pages
+
+# The static site calls the backend directly, so it needs the backend URL.
+# Set it once in: Settings > Secrets and variables > Actions > Variables:
+#   API_URL      the public URL of the backend (for example https://example.up.railway.app)
+# Optional, only if the backend sets API_KEY:
+#   API_KEY      the same key (it is public in the browser bundle by design)
+# Until API_URL is set, both jobs below are skipped and nothing is deployed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: ${{ vars.API_URL != '' }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install packages
+        run: npm ci
+
+      - name: Build static site
+        run: npm run build
+        env:
+          GITHUB_PAGES: "true"
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+          NEXT_PUBLIC_API_KEY: ${{ vars.API_KEY }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+  deploy:
+    if: ${{ vars.API_URL != '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

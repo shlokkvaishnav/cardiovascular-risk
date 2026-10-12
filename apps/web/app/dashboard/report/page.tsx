@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, FileDown } from "lucide-react";
-import { SiteFooter, SiteHeader } from "../../../components/SiteShell";
-import { isLoggedIn } from "../../../lib/authApi";
-import { getReport, downloadReportPdf, type ReportDetail } from "../../../lib/reportsApi";
-import { humanizeContributorLabel } from "../../../lib/predictApi";
+import { SiteFooter, SiteHeader } from "../../components/SiteShell";
+import { isLoggedIn } from "../../lib/authApi";
+import { getReport, downloadReportPdf, type ReportDetail } from "../../lib/reportsApi";
+import { humanizeContributorLabel } from "../../lib/predictApi";
 
-export default function ReportDetailPage() {
-  const params = useParams<{ id: string }>();
+// The report id is a query parameter (?id=...). A static site cannot have a
+// path segment that is only known at run time.
+function ReportDetail() {
+  const id = useSearchParams().get("id");
   const router = useRouter();
   const [report, setReport] = useState<ReportDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -21,10 +23,14 @@ export default function ReportDetailPage() {
       router.push("/login");
       return;
     }
-    getReport(params.id)
+    if (!id) {
+      setError("Report not found or you don't have access to it.");
+      return;
+    }
+    getReport(id)
       .then(setReport)
       .catch(() => setError("Report not found or you don't have access to it."));
-  }, [params.id, router]);
+  }, [id, router]);
 
   return (
     <main>
@@ -92,5 +98,13 @@ export default function ReportDetailPage() {
       </section>
       <SiteFooter />
     </main>
+  );
+}
+
+export default function ReportDetailPage() {
+  return (
+    <Suspense>
+      <ReportDetail />
+    </Suspense>
   );
 }
