@@ -51,7 +51,7 @@ jobs:
 
       - name: Upload drift check log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: drift-check-log
           path: backend/logs/drift_check.log
