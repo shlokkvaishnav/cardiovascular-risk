@@ -11,6 +11,8 @@ Limits are requests per 60 seconds. Set an environment variable to change one:
     RATE_LIMIT_BATCH_RPM     /batch-predict                     (default 10)
     RATE_LIMIT_PREDICT_RPM   /predict                           (default 60)
     RATE_LIMIT_DEFAULT_RPM   every other route                  (default 120)
+    RATE_LIMIT_ENABLED       "false" turns all limits off (the test suite does this).
+                             Any other value, or none, keeps them on.
     TRUST_PROXY_HEADERS      "true" (default) reads the client address from
                              X-Real-IP or X-Forwarded-For. Set "false" if the
                              API is reachable without a reverse proxy.
@@ -99,8 +101,11 @@ class RateLimitMiddleware:
         default_limit: Optional[int] = None,
         trust_proxy_headers: Optional[bool] = None,
         clock: Callable[[], float] = time.monotonic,
+        enabled: Optional[bool] = None,
     ) -> None:
         self.app = app
+        # None means: read RATE_LIMIT_ENABLED on every request.
+        self._enabled = enabled
         self.rules = rules if rules is not None else default_rules()
         self.default_limit = (
             default_limit
@@ -114,6 +119,11 @@ class RateLimitMiddleware:
         )
         self.clock = clock
         self._hits: Dict[Tuple[str, str], Deque[float]] = {}
+
+    def _is_enabled(self) -> bool:
+        if self._enabled is not None:
+            return self._enabled
+        return os.getenv("RATE_LIMIT_ENABLED", "true").lower() != "false"
 
     def _match(self, path: str) -> Tuple[str, int]:
         for rule in self.rules:
@@ -143,6 +153,7 @@ class RateLimitMiddleware:
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if (
             scope["type"] != "http"
+            or not self._is_enabled()
             or scope["method"] == "OPTIONS"
             or scope["path"] in EXEMPT_PATHS
         ):

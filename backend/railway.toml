@@ -26,4 +26,5 @@ restartPolicyMaxRetries = 3
 #   RATE_LIMIT_BATCH_RPM   -- /batch-predict [10]
 #   RATE_LIMIT_PREDICT_RPM -- /predict [60]
 #   RATE_LIMIT_DEFAULT_RPM -- all other routes [120]
+#   RATE_LIMIT_ENABLED     -- "false" turns the limits off [true]
 #   TRUST_PROXY_HEADERS    -- "false" if the API runs without a reverse proxy [true]
