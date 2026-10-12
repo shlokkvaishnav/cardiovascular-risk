@@ -40,6 +40,7 @@ from ..utils.model_introspection import unwrap_calibrated
 from . import auth as auth_router_module
 from . import reports as reports_router_module
 from . import document_extraction as document_extraction_router_module
+from .rate_limit import RateLimitMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Histogram
 
@@ -113,6 +114,11 @@ app = FastAPI(
     description="Production-ready ML API with medical guardrails",
     version="1.1.0",
 )
+
+# Per-client rate limits (see rate_limit.py). Added BEFORE CORSMiddleware on
+# purpose: the last middleware added is the outermost, so CORS wraps this one
+# and a 429 response still carries the CORS headers the browser needs.
+app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -18,3 +18,12 @@ restartPolicyMaxRetries = 3
 #   JWT_SECRET_KEY -- a real random secret
 #   API_KEY        -- a real random secret (protects /predict)
 #   GROQ_API_KEY   -- optional, enables the document-upload feature
+#
+# Optional rate limits, in requests per minute for each client address
+# (see src/api/rate_limit.py). Defaults are in brackets:
+#   RATE_LIMIT_AUTH_RPM    -- /auth/login and /auth/register [10]
+#   RATE_LIMIT_EXTRACT_RPM -- /extract, which calls the Groq API [5]
+#   RATE_LIMIT_BATCH_RPM   -- /batch-predict [10]
+#   RATE_LIMIT_PREDICT_RPM -- /predict [60]
+#   RATE_LIMIT_DEFAULT_RPM -- all other routes [120]
+#   TRUST_PROXY_HEADERS    -- "false" if the API runs without a reverse proxy [true]
