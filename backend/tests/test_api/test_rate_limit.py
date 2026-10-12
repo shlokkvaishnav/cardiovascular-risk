@@ -47,7 +47,9 @@ def make_app(clock: FakeClock, **kwargs) -> TestClient:
         RateLimitMiddleware, rules=rules, default_limit=5, clock=clock, **kwargs
     )
     # Same order as app.py: CORS is added after, so it is the outer layer.
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(
+        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+    )
     return TestClient(app)
 
 
@@ -86,8 +88,12 @@ def test_clients_count_separately_by_proxy_header():
     client = make_app(clock)
     for _ in range(2):
         client.post("/auth/login", headers={"X-Real-IP": "1.1.1.1"})
-    assert client.post("/auth/login", headers={"X-Real-IP": "1.1.1.1"}).status_code == 429
-    assert client.post("/auth/login", headers={"X-Real-IP": "2.2.2.2"}).status_code == 200
+    assert (
+        client.post("/auth/login", headers={"X-Real-IP": "1.1.1.1"}).status_code == 429
+    )
+    assert (
+        client.post("/auth/login", headers={"X-Real-IP": "2.2.2.2"}).status_code == 200
+    )
 
 
 def test_forwarded_for_uses_the_last_address_not_one_the_client_set():
@@ -96,7 +102,9 @@ def test_forwarded_for_uses_the_last_address_not_one_the_client_set():
     # A client cannot pick a fresh identity by changing the first entry.
     for i in range(2):
         client.post("/auth/login", headers={"X-Forwarded-For": f"9.9.9.{i}, 3.3.3.3"})
-    blocked = client.post("/auth/login", headers={"X-Forwarded-For": "9.9.9.99, 3.3.3.3"})
+    blocked = client.post(
+        "/auth/login", headers={"X-Forwarded-For": "9.9.9.99, 3.3.3.3"}
+    )
     assert blocked.status_code == 429
 
 
@@ -105,7 +113,9 @@ def test_proxy_headers_are_ignored_when_not_trusted():
     client = make_app(clock, trust_proxy_headers=False)
     for i in range(2):
         client.post("/auth/login", headers={"X-Real-IP": f"5.5.5.{i}"})
-    assert client.post("/auth/login", headers={"X-Real-IP": "5.5.5.99"}).status_code == 429
+    assert (
+        client.post("/auth/login", headers={"X-Real-IP": "5.5.5.99"}).status_code == 429
+    )
 
 
 def test_health_and_preflight_are_never_limited():
@@ -116,7 +126,10 @@ def test_health_and_preflight_are_never_limited():
     for _ in range(20):
         response = client.options(
             "/auth/login",
-            headers={"Origin": "https://example.com", "Access-Control-Request-Method": "POST"},
+            headers={
+                "Origin": "https://example.com",
+                "Access-Control-Request-Method": "POST",
+            },
         )
         assert response.status_code == 200
 

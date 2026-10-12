@@ -57,7 +57,11 @@ def _int_env(name: str, default: int) -> int:
 def default_rules() -> List[Rule]:
     # Order matters: the first rule whose prefix matches wins.
     return [
-        Rule("auth", ("/auth/login", "/auth/register"), _int_env("RATE_LIMIT_AUTH_RPM", 10)),
+        Rule(
+            "auth",
+            ("/auth/login", "/auth/register"),
+            _int_env("RATE_LIMIT_AUTH_RPM", 10),
+        ),
         Rule("extract", ("/extract",), _int_env("RATE_LIMIT_EXTRACT_RPM", 5)),
         Rule("batch", ("/batch-predict",), _int_env("RATE_LIMIT_BATCH_RPM", 10)),
         Rule("predict", ("/predict",), _int_env("RATE_LIMIT_PREDICT_RPM", 60)),
@@ -67,13 +71,20 @@ def default_rules() -> List[Rule]:
 def client_address(scope: Scope, trust_proxy_headers: bool) -> str:
     """Return the address used to count requests for one client."""
     if trust_proxy_headers:
-        headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope["headers"]}
+        headers = {
+            k.decode("latin-1").lower(): v.decode("latin-1")
+            for k, v in scope["headers"]
+        }
         real_ip = headers.get("x-real-ip", "").strip()
         if real_ip:
             return real_ip
         # The proxy appends the real client address at the end of the list.
         # The first entries can be set by the client, so do not use them.
-        forwarded = [p.strip() for p in headers.get("x-forwarded-for", "").split(",") if p.strip()]
+        forwarded = [
+            p.strip()
+            for p in headers.get("x-forwarded-for", "").split(",")
+            if p.strip()
+        ]
         if forwarded:
             return forwarded[-1]
     client = scope.get("client")
@@ -92,7 +103,9 @@ class RateLimitMiddleware:
         self.app = app
         self.rules = rules if rules is not None else default_rules()
         self.default_limit = (
-            default_limit if default_limit is not None else _int_env("RATE_LIMIT_DEFAULT_RPM", 120)
+            default_limit
+            if default_limit is not None
+            else _int_env("RATE_LIMIT_DEFAULT_RPM", 120)
         )
         self.trust_proxy_headers = (
             trust_proxy_headers
@@ -122,11 +135,17 @@ class RateLimitMiddleware:
         return None
 
     def _drop_idle(self, now: float) -> None:
-        for key in [k for k, h in self._hits.items() if not h or h[-1] <= now - WINDOW_SECONDS]:
+        for key in [
+            k for k, h in self._hits.items() if not h or h[-1] <= now - WINDOW_SECONDS
+        ]:
             del self._hits[key]
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope["method"] == "OPTIONS" or scope["path"] in EXEMPT_PATHS:
+        if (
+            scope["type"] != "http"
+            or scope["method"] == "OPTIONS"
+            or scope["path"] in EXEMPT_PATHS
+        ):
             await self.app(scope, receive, send)
             return
 

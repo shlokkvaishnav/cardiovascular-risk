@@ -10,26 +10,27 @@ import { isLoggedIn } from "../../lib/authApi";
 import { getReport, downloadReportPdf, type ReportDetail } from "../../lib/reportsApi";
 import { humanizeContributorLabel } from "../../lib/predictApi";
 
+const notFound = "Report not found or you don't have access to it.";
+
 // The report id is a query parameter (?id=...). A static site cannot have a
 // path segment that is only known at run time.
 function ReportDetail() {
   const id = useSearchParams().get("id");
   const router = useRouter();
   const [report, setReport] = useState<ReportDetail | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  // A missing id is an error without any request, so it needs no state.
+  const error = !id ? notFound : fetchError;
 
   useEffect(() => {
     if (!isLoggedIn()) {
       router.push("/login");
       return;
     }
-    if (!id) {
-      setError("Report not found or you don't have access to it.");
-      return;
-    }
+    if (!id) return;
     getReport(id)
       .then(setReport)
-      .catch(() => setError("Report not found or you don't have access to it."));
+      .catch(() => setFetchError(notFound));
   }, [id, router]);
 
   return (
