@@ -1,5 +1,7 @@
 # CardioRisk — Explainable Cardiovascular Risk Platform
 
+![CI](https://github.com/shlokkvaishnav/CardioVascular-Risk/actions/workflows/pipeline.yml/badge.svg) ![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)
+
 A full-stack ML application that estimates cardiovascular risk from lifestyle and vitals
 data, explains every prediction with real SHAP values, and optionally tracks a user's risk
 trend over time — built to demonstrate the full ML lifecycle: data validation → feature
