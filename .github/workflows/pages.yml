@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 # The static site calls the backend directly, so it needs the backend URL.
 # Set it once in: Settings > Secrets and variables > Actions > Variables:
-#   API_URL      the public URL of the backend (for example https://example.up.railway.app)
+#   API_URL      the public URL of the backend (for example https://example.onrender.com)
 # Optional, only if the backend sets API_KEY:
 #   API_KEY      the same key (it is public in the browser bundle by design)
 # Until API_URL is set, both jobs below are skipped and nothing is deployed.
