@@ -1,0 +1,117 @@
+# Lean training config for hosts with a short build limit (Render free plan).
+# Same as config.yaml, but: 2 worker threads, no RandomForest or Stacking,
+# no screening, no Optuna tuning, 3-fold calibration. Models are slightly
+# weaker than the full search in config.yaml.
+project:
+  name: cardiovascular_risk
+  version: 0.1.0
+  random_seed: 42
+
+data:
+  # Kaggle "Cardiovascular Disease dataset" (sulianova) -- ~70,000 patient
+  # records, semicolon-delimited, lifestyle/behavioral features that overlap
+  # with what the frontend wizard collects. Superseded the smaller (~920-row)
+  # UCI heart_disease_uci.csv as the primary training set; that file is kept
+  # in data/raw/ for reference/comparison but is no longer the default.
+  raw_path: data/raw/cardio_train.csv
+  raw_delimiter: ";"
+  processed_path: data/processed/
+  test_size: 0.3
+  validation_size: 0.2
+
+preprocessing:
+  feature_engineering:
+    # Toggle for the derived clinical features below (pulse pressure,
+    # BP/BMI category, age bucket, health-risk score, BMI-BP interaction).
+    # BMI itself is always computed regardless of this flag -- it long
+    # predates this toggle and every downstream consumer (config lists,
+    # FEATURE_NAMES in app.py) assumes its presence.
+    enabled: true
+  numerical_features:
+    - age
+    - height
+    - weight
+    - bmi
+    - ap_hi
+    - ap_lo
+    - pulse_pressure
+    - health_risk_score
+    - bmi_bp_interaction
+  categorical_features:
+    - sex
+    - cholesterol
+    - gluc
+    - smoke
+    - alco
+    - active
+    - bp_category
+    - bmi_category
+    - age_bucket
+  imputation_strategy:
+    numerical: median
+    categorical: most_frequent
+
+training:
+  n_jobs: 2
+  cv_folds: 5
+  metrics: ['accuracy', 'f1', 'roc_auc']
+  candidate_models:
+    - LogisticRegression
+    - LightGBM
+    - XGBoost
+  stacking_cv_folds: 3   # internal CV for the stacking meta-learner's out-of-fold features
+  screening:
+    # Cheap, untuned CV pass run before committing the full Optuna tuning
+    # budget to every candidate. Across two full retrains, RandomForest has
+    # never won (~0.001-0.002 ROC-AUC behind LightGBM/XGBoost) while taking
+    # 5-10x longer to tune -- this lets weak candidates earn a much smaller
+    # budget automatically instead of hardcoding which model to skip.
+    enabled: false
+    cv_folds: 3
+    margin: 0.01          # within this ROC-AUC of the best screening score -> full tuning budget
+    reduced_trials: 10     # trial budget for candidates outside the margin
+  model_selection:
+    primary_metric: roc_auc
+    tie_breaker: f1
+    tie_tolerance: 0.002
+  tuning:
+    enabled: false
+    n_trials: 50        # full local/manual retrain budget
+    n_trials_ci: 3       # CI smoke-test budget -- proves the code path works, not a real search
+    cv_folds: 5
+    scoring: roc_auc
+  calibration:
+    enabled: true
+    method: isotonic
+    cv: 3
+  business_cost:
+    cost_fp: 1.0
+    cost_fn: 10.0
+
+mlflow:
+  tracking_uri: sqlite:///mlflow.db
+  experiment_name: cardiovascular_risk_baseline
+
+validation:
+  ranges:
+    age: { min: 18, max: 100 }
+    sex: { min: 0, max: 1 }
+    height: { min: 120, max: 220 }
+    weight: { min: 30, max: 250 }
+    bmi: { min: 12, max: 80 }
+    ap_hi: { min: 70, max: 240 }
+    ap_lo: { min: 40, max: 160 }
+    cholesterol: { min: 1, max: 3 }
+    gluc: { min: 1, max: 3 }
+    smoke: { min: 0, max: 1 }
+    alco: { min: 0, max: 1 }
+    active: { min: 0, max: 1 }
+    # Rows where diastolic > systolic (a data-entry inconsistency in the raw
+    # Kaggle dataset) are now dropped by DataLoader._clean_blood_pressure, so
+    # pulse_pressure = ap_hi - ap_lo is always non-negative by this point.
+    pulse_pressure: { min: 0, max: 200 }
+    bp_category: { min: 0, max: 4 }
+    bmi_category: { min: 0, max: 3 }
+    age_bucket: { min: 0, max: 9 }
+    health_risk_score: { min: 0, max: 6 }
+    bmi_bp_interaction: { min: 0, max: 80 }

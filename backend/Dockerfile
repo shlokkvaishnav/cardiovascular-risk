@@ -32,10 +32,11 @@ COPY logs/ ./logs
 
 # Bake a trained model + SHAP background into the image at build time, so the
 # container is immediately servable without depending on a runtime volume mount.
-# QUICK_TRAIN=1 uses the small tuning budget (n_trials_ci), for hosts with a short build
+# QUICK_TRAIN=1 uses config/config.quick.yaml (no tuning), for hosts with a short build
 # time limit such as Render's free plan. Leave it unset for the full search.
 ARG QUICK_TRAIN=
-RUN if [ -n "$QUICK_TRAIN" ]; then export CI_SMOKE=1; fi && python scripts/train.py --config config/config.yaml
+RUN CFG=config/config.yaml; if [ -n "$QUICK_TRAIN" ]; then CFG=config/config.quick.yaml; fi \
+    && python scripts/train.py --config "$CFG"
 
 # Create a non-root user, own the artifacts it just produced
 RUN adduser --disabled-password --gecos '' appuser \
