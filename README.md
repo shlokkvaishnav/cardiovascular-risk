@@ -189,6 +189,10 @@ npm install
 NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
 
+### Deploy the backend on Render
+
+The repo has a Render Blueprint, [`render.yaml`](render.yaml). In Render, choose **New → Blueprint** and pick this repo. It creates the API service (built from `backend/Dockerfile`) and a free Postgres database, and it generates `API_KEY` and `JWT_SECRET_KEY` for you. To host the frontend on GitHub Pages, set the repository variables `API_URL` (the service address) and `API_KEY` (the generated key). The workflow in [`.github/workflows/pages.yml`](.github/workflows/pages.yml) then builds and deploys the static site.
+
 ### Environment variables
 
 | Variable | Required | Purpose |
