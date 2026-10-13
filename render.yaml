@@ -1,0 +1,31 @@
+# Render Blueprint for the FastAPI backend.
+# In Render: New > Blueprint, choose this repository. Render reads this file,
+# builds backend/Dockerfile, and creates a free Postgres database.
+# Then copy the generated API_KEY into the GitHub variable API_KEY, and the
+# service address into the GitHub variable API_URL (see .github/workflows/pages.yml).
+services:
+  - type: web
+    name: cardiovascular-risk-api
+    runtime: docker
+    plan: free
+    branch: main
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cardiovascular-risk-db
+          property: connectionString
+      - key: API_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      # Optional: set in the Render dashboard to turn on document upload.
+      - key: GROQ_API_KEY
+        sync: false
+
+databases:
+  - name: cardiovascular-risk-db
+    plan: free
