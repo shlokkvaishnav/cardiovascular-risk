@@ -27,7 +27,6 @@ export default function AboutPage() {
       <section className="section">
         <div className="container static-grid">
           <motion.div className="card-panel" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="mini-badge">Methodology</div>
             <h1 className="type-h1">How the risk estimate is built</h1>
             <p className="lead">
               The platform uses established cardiovascular predictors inspired by Framingham and Pooled Cohort

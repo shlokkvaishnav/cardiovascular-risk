@@ -297,7 +297,7 @@ export function ResultsDashboard() {
           : activeResult.category === "moderate"
             ? "#f39c12"
             : "#e74c3c"
-      } ${degree}deg, #eef1f4 ${degree}deg 360deg)`,
+      } ${degree}deg, var(--border) ${degree}deg 360deg)`,
     };
   }, [activeResult, animatedScore]);
 

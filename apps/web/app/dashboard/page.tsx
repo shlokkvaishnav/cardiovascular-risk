@@ -84,7 +84,6 @@ export default function DashboardPage() {
           <motion.div className="card-panel" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
             <div className="dashboard-head">
               <div>
-                <div className="mini-badge">Account</div>
                 <h1 className="type-h2">Welcome back{user ? `, ${user.email}` : ""}</h1>
                 <p className="lead">{reports.length} saved assessment{reports.length === 1 ? "" : "s"}</p>
               </div>

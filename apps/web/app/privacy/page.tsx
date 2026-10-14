@@ -8,7 +8,6 @@ export default function PrivacyPage() {
       <section className="section">
         <div className="container static-grid">
           <div className="card-panel">
-            <div className="mini-badge">Privacy</div>
             <h1 className="type-h1">Zero-storage by design</h1>
             <p className="lead">
               Assessment answers remain in your browser session and are not persisted to platform servers.

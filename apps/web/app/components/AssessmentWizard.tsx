@@ -848,7 +848,6 @@ export function AssessmentWizard() {
 
       <div className="container wizard-grid">
         <aside className="wizard-side card-panel">
-          <div className="mini-badge">Guided wizard</div>
           <h1 className="type-h1">Cardiovascular Assessment</h1>
           <p className="lead">Conversational flow built to reduce cognitive load and improve input confidence.</p>
           <div className="meter">
